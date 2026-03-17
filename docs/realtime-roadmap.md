@@ -8,15 +8,35 @@ Keeping that work separate prevents speculative architecture from leaking into t
 
 ## Current Status
 
-The realtime track is not implemented yet. Task 7 keeps `apps/realtime_voice/` placeholder-only and uses this document to define boundaries, not a build plan.
+The realtime track now authorizes a browser-based `realtime v1` prototype under
+`apps/realtime_voice/`.
 
-## What Is Deferred
+The prototype is experimental. The stable supported day-to-day workflow remains Claude
+Code plus the `voice-mode` MCP server.
 
-- runtime code under `apps/realtime_voice/`
-- stack and SDK selection
-- audio pipeline and session model
-- packaging, deployment, and local setup steps
-- any cross-track abstraction work
+## `realtime v1` Scope
+
+The current prototype scope is:
+
+- browser microphone capture
+- WebRTC connection to the OpenAI Realtime API
+- a local Node server that mints short-lived Realtime client secrets
+- brief spoken coding-assistant behavior
+- live transcript and diagnostics UI
+
+See:
+
+- `apps/realtime_voice/README.md`
+- `apps/realtime_voice/docs/overview.md`
+- `apps/realtime_voice/docs/design.md`
+- `apps/realtime_voice/docs/local-setup.md`
+
+## What Is Still Deferred
+
+- tool use inside the realtime assistant
+- shared abstractions with `apps/claude_code_voice/`
+- publishable packaging or deployment beyond local prototype use
+- any decision to replace the stable lane
 
 ## What Must Remain Separate
 
@@ -29,4 +49,8 @@ The following must remain separate from `apps/claude_code_voice/` until both tra
 
 ## Current Constraint
 
-Do not add implementation details here yet. The realtime track remains intentionally placeholder-only until a later task explicitly authorizes prototypes.
+Do not let the existence of the prototype blur the repo contract:
+
+- the stable Claude Code lane is still the supported path
+- the realtime lane is still experimental
+- no shared runtime should be assumed between them

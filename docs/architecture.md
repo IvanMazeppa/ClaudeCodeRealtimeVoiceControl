@@ -2,12 +2,16 @@
 
 ## Purpose
 
-This repository separates a stable integration lane from an experimental realtime lane so current workflow materials do not get tangled with future research.
+This repository separates a stable integration lane from an experimental realtime lane so
+current workflow materials do not get tangled with future research.
 
 ## Named Lanes
 
-- Stable integration lane: `apps/claude_code_voice/` for Claude Code plus voice-mode integration work that supports the current reproducible workflow.
-- Experimental realtime lane: `apps/realtime_voice/` for future realtime voice research. This lane is placeholder-only and not implemented yet.
+- Stable integration lane: `apps/claude_code_voice/` for Claude Code plus `voice-mode`
+  integration work that supports the current reproducible workflow.
+- Experimental realtime lane: `apps/realtime_voice/` for the browser-based OpenAI
+  Realtime prototype. This lane is implemented as an experimental app and remains
+  separate from the stable runtime.
 
 ## Shared vs Track-Specific Assets
 
@@ -24,8 +28,10 @@ This repository separates a stable integration lane from an experimental realtim
 3. No shared runtime should be assumed between the two lanes.
 4. Do not force shared abstractions before both lanes need them.
 5. Store version-pinned assets where the version is visible in the path.
-6. Treat experimental realtime materials as research until a later task defines implementation details.
+6. Treat experimental realtime materials as research-oriented even when a prototype exists.
 
 ## Current State
 
-The stable integration lane can hold concrete workflow materials. The experimental realtime lane remains placeholder-only until a later task explicitly authorizes prototypes.
+The stable integration lane holds the supported daily workflow. The experimental
+realtime lane now holds a browser/WebRTC prototype with its own docs, setup, and launch
+path, while still remaining non-canonical for day-to-day work.

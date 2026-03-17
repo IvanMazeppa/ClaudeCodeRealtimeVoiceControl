@@ -13,8 +13,9 @@ This file is the short handoff. The exported transcript is backup reference only
   `voice-mode` workflow.
 - The stable supported path is Claude Code plus the `voice-mode` MCP server.
 - The stable baseline is `voice-mode==8.5.1`.
-- The realtime track exists only as a placeholder research lane under
+- A separate experimental browser/WebRTC realtime prototype now lives under
   `apps/realtime_voice/`.
+- The stable supported day-to-day path is still Claude Code plus `voice-mode` MCP.
 - The repository has been pushed to GitHub.
 - The initial verification path has already been exercised successfully on the
   current machine:
@@ -31,9 +32,13 @@ Treat these files as the first place to read before using any large transcript:
 - `docs/claude-code-workflow.md`
 - `docs/migration-notes.md`
 - `docs/session-handoff.md`
+- `docs/realtime-roadmap.md`
+- `docs/voice-systems.md`
 - `apps/claude_code_voice/prompts/session_start.md`
 - `apps/claude_code_voice/docs/local-setup-notes.md`
 - `apps/claude_code_voice/docs/voice-mode-8.5.1.md`
+- `apps/realtime_voice/README.md`
+- `apps/realtime_voice/docs/overview.md`
 
 ## Machine-Owned State
 
@@ -91,14 +96,18 @@ Use these files as the primary source of truth:
 - `docs/claude-code-workflow.md`
 - `docs/migration-notes.md`
 - `docs/session-handoff.md`
+- `docs/realtime-roadmap.md`
+- `docs/voice-systems.md`
 - `apps/claude_code_voice/prompts/session_start.md`
 - `apps/claude_code_voice/docs/local-setup-notes.md`
 - `apps/claude_code_voice/docs/voice-mode-8.5.1.md`
+- `apps/realtime_voice/README.md`
+- `apps/realtime_voice/docs/overview.md`
 
 Important assumptions:
 - stable supported path: Claude Code plus `voice-mode` MCP
 - pinned stable baseline: `voice-mode==8.5.1`
-- realtime track is placeholder-only
+- separate experimental realtime prototype under `apps/realtime_voice/`
 - machine-owned files stay outside git unless explicitly discussed
 - ask before changing `~/.claude.json`, `~/.cursor/mcp.json`, `~/.voicemode/voicemode.env`, or `~/.asoundrc`
 
@@ -119,6 +128,5 @@ missing something specific.
 Natural next tasks in this repo are:
 
 - validate one real end-to-end Claude Code voice session from the new workspace
+- validate one local browser-based realtime session under `apps/realtime_voice/`
 - tighten any machine-local drift discovered during real use
-- scope a very small `realtime v1` before building anything under
-  `apps/realtime_voice/`

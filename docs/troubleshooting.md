@@ -1,18 +1,28 @@
 # Troubleshooting
 
-## Status
+## Stable Lane
 
-Placeholder troubleshooting guide for this repository.
+If the stable Claude Code plus `voice-mode` workflow fails:
 
-## Intended Scope
+- audio or transcription issue: start with `bash scripts/verify_audio_stack.sh`
+- `voice-mode` issue: run `bash scripts/verify_voicemode.sh`
+- missing MCP tool: inspect the `voice-mode` fragment in `~/.claude.json` and
+  `~/.cursor/mcp.json`
 
-This file will later collect practical fixes and recovery steps for issues that affect:
+## Realtime Lane
 
-- the stable Claude Code voice workflow
-- version-pinned patch usage
-- repository setup problems
-- future experimental realtime work, once that track exists
+If the browser-based realtime app fails:
 
-## Current Constraint
+- confirm `apps/realtime_voice/.env` exists and contains `OPENAI_API_KEY`
+- restart the local server with `bash scripts/start_realtime_voice.sh`
+- open the browser devtools console and the in-app event log
+- confirm the browser has microphone permission
+- hit `http://127.0.0.1:4173/health` and confirm the local server reports `ok: true`
 
-Task 1 does not add operational procedures. Keep this document focused as a placeholder until real troubleshooting knowledge is available.
+## Boundary Reminder
+
+Do not debug the wrong lane first:
+
+- stable lane problems usually live in WSL audio, `voice-mode`, or MCP registration
+- realtime lane problems usually live in browser mic permissions, local `.env`, token
+  minting, or WebRTC session setup
