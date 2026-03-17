@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realtime Voice Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Azeret+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Realtime Voice Lane</p>
+        <h1>Browser-first voice control for coding sessions.</h1>
+        <p class="lede">
+          This prototype keeps microphone capture in the browser, mints a short-lived
+          Realtime token locally, and gives you live status, transcripts, and event flow
+          without sharing runtime with the stable Claude Code lane.
+        </p>
+      </section>
+
+      <section class="control-panel panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Session</p>
+            <h2>Connect to OpenAI Realtime</h2>
+          </div>
+          <div class="status-block">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">Idle</span>
+          </div>
+        </div>
+
+        <div class="controls-grid">
+          <label class="control">
+            <span>Voice</span>
+            <select id="voice-select">
+              <option value="marin">marin</option>
+              <option value="alloy">alloy</option>
+              <option value="shimmer">shimmer</option>
+              <option value="nova">nova</option>
+            </select>
+          </label>
+
+          <label class="control">
+            <span>Turn detection</span>
+            <select id="turn-select">
+              <option value="semantic_vad">semantic VAD</option>
+              <option value="server_vad">server VAD</option>
+              <option value="manual">manual</option>
+            </select>
+          </label>
+
+          <label class="control">
+            <span>Assistant style</span>
+            <select id="style-select">
+              <option value="brief">brief</option>
+              <option value="balanced">balanced</option>
+              <option value="detail">detail</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="connect-btn" class="button primary">Connect</button>
+          <button id="disconnect-btn" class="button" disabled>Disconnect</button>
+          <button id="mute-btn" class="button" disabled>Mute mic</button>
+        </div>
+
+        <div class="meta-row">
+          <div>
+            <span class="meta-label">Model</span>
+            <strong id="model-label">gpt-realtime</strong>
+          </div>
+          <div>
+            <span class="meta-label">Token expiry</span>
+            <strong id="expiry-label">Not requested</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <article class="panel transcript-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Transcript</p>
+              <h2>Live conversation</h2>
+            </div>
+          </div>
+          <div id="live-banner" class="live-banner">Waiting for a session.</div>
+          <div id="transcript-list" class="transcript-list"></div>
+        </article>
+
+        <article class="panel event-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Diagnostics</p>
+              <h2>Realtime event flow</h2>
+            </div>
+          </div>
+          <div id="event-log" class="event-log"></div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -12,7 +12,9 @@ Stable Claude Code plus `voice-mode` integration work. This track preserves and 
 
 ### `apps/realtime_voice`
 
-Future experimental realtime voice app work. This track remains placeholder-only until the research direction is approved and implementation details are ready to be written down.
+Experimental browser-based OpenAI Realtime voice app work. This track now contains a
+separate `realtime v1` prototype and remains explicitly independent from the stable
+Claude Code plus `voice-mode` lane.
 
 ## Repository Layout
 
@@ -33,4 +35,6 @@ The repository bootstrap is in place and the stable track now includes the canon
 - `apps/claude_code_voice/docs/voice-mode-8.5.1.md`
 - repo-owned templates, support scripts, and the `patches/voice-mode/8.5.1/cli-empty-tts.patch` artifact
 
-The stable Claude Code plus MCP workflow is the supported day-to-day path. The realtime track remains research-only.
+The stable Claude Code plus MCP workflow is the supported day-to-day path. The realtime
+track is available as a separate experimental prototype, not the default supported
+workflow.
