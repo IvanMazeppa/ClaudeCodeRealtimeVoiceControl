@@ -1,0 +1,8 @@
+# Minimal ALSA-to-Pulse bridge example.
+pcm.!default {
+    type pulse
+}
+
+ctl.!default {
+    type pulse
+}

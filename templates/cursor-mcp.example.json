@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "voice-mode": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "voice-mode==8.5.1", "voice-mode"],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}
