@@ -74,13 +74,18 @@ def print_fragment(label: str, fragment: dict) -> None:
     print(json.dumps(fragment, indent=2, sort_keys=True))
 
 
-def analyze_json_target(label: str, live_path: pathlib.Path, fragment: dict) -> None:
+def print_full_file_example(label: str, template: dict) -> None:
+    print(f"[{label}] Suggested full-file example for a fresh setup:")
+    print(json.dumps(template, indent=2, sort_keys=True))
+
+
+def analyze_json_target(label: str, live_path: pathlib.Path, template: dict, fragment: dict) -> None:
     print_header(label, live_path)
 
     current = load_json(live_path)
     if current is None:
-        print(f"[{label}] Live file is missing. Create it manually and merge only the fragment below.")
-        print_fragment(label, fragment)
+        print(f"[{label}] Live file is missing. Create it manually from the full-file example below.")
+        print_full_file_example(label, template)
         return
 
     if current == "INVALID":
@@ -150,12 +155,14 @@ voicemode_template_lines = [
 analyze_json_target(
     "claude",
     home_dir / ".claude.json",
+    claude_template,
     {"voice-mode": claude_template["mcpServers"]["voice-mode"]},
 )
 
 analyze_json_target(
     "cursor",
     home_dir / ".cursor" / "mcp.json",
+    cursor_template,
     {"voice-mode": cursor_template["mcpServers"]["voice-mode"]},
 )
 
