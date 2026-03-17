@@ -226,7 +226,7 @@ if [ "${APPLY_CLI_PATCH}" -eq 1 ] || [ "${RUN_PATCH_DRY_RUN}" -eq 1 ]; then
 else
     note "CLI patch step not run. Suggested next step: ${SCRIPT_DIR}/apply_voicemode_patch.sh"
     if [ -n "${PATCH_TARGET}" ]; then
-        note "The requested patch target will be used the next time you run --dry-run-cli-patch or --apply-cli-patch"
+        note "No CLI patch step ran on this invocation. Re-pass --patch-target PATH together with --dry-run-cli-patch or --apply-cli-patch when you want the installer to use that target."
     else
         note "If multiple installed voice-mode copies exist, rerun the CLI patch step with --patch-target PATH"
     fi
