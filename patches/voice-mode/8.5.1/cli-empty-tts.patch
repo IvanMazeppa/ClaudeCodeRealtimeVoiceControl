@@ -1,0 +1,22 @@
+--- a/voice_mode/cli.py
++++ b/voice_mode/cli.py
+@@ -1695,7 +1695,9 @@
+                 
+                 # Continue conversation
+                 while True:
+-                    # Wait for user's next input
++                    # Wait for user's next input.
++                    # Empty follow-up turns are listen-only, so force TTS off
++                    # unless the caller explicitly asked to keep it enabled.
+                     result = await converse_fn.fn(
+                         message="",  # Empty message for listening only
+                         wait_for_response=True,
+@@ -1710,7 +1712,7 @@
+                         disable_silence_detection=disable_silence_detection,
+                         speed=speed,
+                         vad_aggressiveness=vad_aggressiveness,
+-                        skip_tts=skip_tts
++                        skip_tts=True if skip_tts is None else skip_tts
+                     )
+                     
+                     if result and "Voice response:" in result:
