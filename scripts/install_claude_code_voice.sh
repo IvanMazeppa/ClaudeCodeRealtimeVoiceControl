@@ -21,6 +21,7 @@ RUN_AUDIO_CHECK=0
 RUN_VOICE_SMOKE=0
 RUN_PATCH_DRY_RUN=0
 APPLY_CLI_PATCH=0
+PATCH_TARGET=""
 OVERWRITE_VOICEMODE_ENV=0
 failures=0
 
@@ -39,8 +40,15 @@ Options:
   --run-voice-smoke               Run scripts/verify_voicemode.sh for 8.5.1.
   --dry-run-cli-patch             Run the patch locator in dry-run mode.
   --apply-cli-patch               Apply the 8.5.1 CLI patch after a dry-run.
+  --patch-target PATH             Pass a specific install path through to
+                                  scripts/apply_voicemode_patch.sh.
   --overwrite-voicemode-env       Replace ~/.voicemode/voicemode.env from the repo template.
   -h, --help                      Show this help text.
+
+Patch targeting:
+  Use --patch-target when multiple installed voice-mode copies exist and you
+  want the installer to target one specific site-packages, voice_mode, or
+  voice_mode/cli.py path for the CLI patch dry-run or apply step.
 EOF
 }
 
@@ -112,6 +120,14 @@ while [ $# -gt 0 ]; do
         --apply-cli-patch)
             APPLY_CLI_PATCH=1
             ;;
+        --patch-target)
+            shift
+            if [ $# -eq 0 ]; then
+                record_failure "Missing value after --patch-target"
+                exit 1
+            fi
+            PATCH_TARGET="$1"
+            ;;
         --overwrite-voicemode-env)
             OVERWRITE_VOICEMODE_ENV=1
             ;;
@@ -161,6 +177,10 @@ else
     warn "The stable verifier and patch artifact in this repo target voice-mode==${PINNED_STABLE_VERSION}"
 fi
 
+if [ -n "${PATCH_TARGET}" ]; then
+    note "CLI patch target override requested: ${PATCH_TARGET}"
+fi
+
 if [ "${failures}" -ne 0 ]; then
     exit 1
 fi
@@ -190,15 +210,26 @@ else
 fi
 
 if [ "${APPLY_CLI_PATCH}" -eq 1 ] || [ "${RUN_PATCH_DRY_RUN}" -eq 1 ]; then
+    patch_cmd=("${SCRIPT_DIR}/apply_voicemode_patch.sh")
+    if [ -n "${PATCH_TARGET}" ]; then
+        patch_cmd+=("--target" "${PATCH_TARGET}")
+    fi
+
     if [ "${SELECTED_VERSION}" != "${PINNED_STABLE_VERSION}" ]; then
         warn "Skipping CLI patch step because the repo patch artifact only targets voice-mode==${PINNED_STABLE_VERSION}"
     elif [ "${APPLY_CLI_PATCH}" -eq 1 ]; then
-        run_step "voice-mode CLI patch apply" "${SCRIPT_DIR}/apply_voicemode_patch.sh" --apply
+        patch_cmd+=("--apply")
+        run_step "voice-mode CLI patch apply" "${patch_cmd[@]}"
     else
-        run_step "voice-mode CLI patch dry-run" "${SCRIPT_DIR}/apply_voicemode_patch.sh"
+        run_step "voice-mode CLI patch dry-run" "${patch_cmd[@]}"
     fi
 else
     note "CLI patch step not run. Suggested next step: ${SCRIPT_DIR}/apply_voicemode_patch.sh"
+    if [ -n "${PATCH_TARGET}" ]; then
+        note "The requested patch target will be used the next time you run --dry-run-cli-patch or --apply-cli-patch"
+    else
+        note "If multiple installed voice-mode copies exist, rerun the CLI patch step with --patch-target PATH"
+    fi
 fi
 
 if [ "${OVERWRITE_VOICEMODE_ENV}" -eq 1 ]; then
@@ -213,7 +244,8 @@ printf '\nRecommended next steps:\n'
 printf '  1. Review the merge suggestions from scripts/sync_local_config.sh.\n'
 printf '  2. Run scripts/verify_audio_stack.sh.\n'
 printf '  3. Run scripts/verify_voicemode.sh for the pinned stable smoke test.\n'
-printf '  4. Only if you need the standalone continuous CLI path on 8.5.1, run scripts/apply_voicemode_patch.sh --apply.\n'
+printf '  4. Only if you need the standalone continuous CLI path on 8.5.1, run scripts/apply_voicemode_patch.sh [--target PATH] --apply.\n'
+printf '     Use --patch-target PATH with this installer when multiple installed voice-mode copies exist.\n'
 
 if [ "${failures}" -ne 0 ]; then
     exit 1
