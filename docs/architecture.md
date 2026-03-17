@@ -11,9 +11,11 @@ This repository separates a stable integration lane from an experimental realtim
 
 ## Shared vs Track-Specific Assets
 
-- Root-level assets are shared when they apply to the repository as a whole, such as `docs/`, `scripts/`, `templates/`, and version-scoped materials under `patches/`.
+- Root-level assets are shared when they apply to the repository as a whole, such as `scripts/`, `templates/`, version-scoped materials under `patches/`, and repo-level documents under `docs/`.
+- Repo-level documents under root `docs/` cover repository-wide architecture, roadmap, migration, and other cross-track references.
 - App-level assets are track-specific. Files under `apps/claude_code_voice/` belong to the stable integration lane, and files under `apps/realtime_voice/` belong to the experimental realtime lane.
-- Do not move app-level prompts, setup notes, runtime code, or track-specific docs into a shared location unless both lanes later prove a real shared need.
+- App-operational documents such as prompts, setup notes, runtime docs, and app-specific usage materials belong under the relevant app directory, not under root `docs/`.
+- Do not move app-level prompts, setup notes, runtime code, or other track-specific materials into a shared location unless both lanes later prove a real shared need.
 
 ## Boundary Rules
 
