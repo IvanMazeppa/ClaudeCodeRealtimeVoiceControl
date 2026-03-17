@@ -14,9 +14,18 @@ The working microphone path was:
 2. Windows exposed that input to the local desktop audio stack.
 3. WSL audio integration made the Windows-side audio path available to Linux applications.
 4. A user-level ALSA bridge forwarded Linux audio clients to the WSL PulseAudio or PipeWire path.
-5. Claude Code in WSL used that audio path indirectly through the `voice-mode` MCP workflow.
+5. `voice-mode` used that local path for audio capture and playback.
+6. Claude Code in WSL invoked `voice-mode` over MCP rather than handling audio directly.
 
-In short: Android mic to Windows, then Windows audio into WSL, then Claude Code plus MCP inside WSL.
+In short: Android mic to Windows, Windows audio into WSL, `voice-mode` handling local audio and STT/TTS, then Claude Code driving the conversation over MCP.
+
+## Responsibility Boundaries
+
+Keep these layers distinct when troubleshooting:
+
+- `voice-mode` owns local microphone capture, local speech playback, speech-to-text, and text-to-speech.
+- Claude Code owns MCP invocation, session logic, and the decision about what should be spoken versus left on screen.
+- The Windows and WSL audio layers only provide the local audio path that `voice-mode` depends on.
 
 ## WSL Audio Bridge
 
@@ -26,7 +35,7 @@ The known-good WSL layer relied on:
 - a user-level ALSA bridge file at `~/.asoundrc`
 - a working PulseAudio or PipeWire path visible to Linux applications
 
-If speech stops working after an update, recheck the WSL audio path before assuming the MCP workflow is broken.
+If speech stops working after an update, recheck the WSL audio path before assuming Claude Code is at fault. If `voice-mode` cannot capture or play audio locally, the MCP workflow will also fail.
 
 ## Claude Code MCP Registration
 
@@ -37,6 +46,8 @@ The known-good registration location was:
 - `~/.claude.json`
 
 Keep the registration user-scoped. Do not commit machine-local MCP registration files into this repository.
+
+If `voice-mode` is healthy locally but does not appear in Claude Code, troubleshoot this registration layer first.
 
 ## voice-mode Config Location
 
@@ -50,6 +61,8 @@ The tested local config favored:
 - preferred voice order starting with `shimmer`
 
 Keep repo docs limited to safe, redacted configuration guidance rather than copying full live config files.
+
+This config is part of the `voice-mode` layer, not the Claude Code layer.
 
 ## Secret Handling
 
@@ -68,8 +81,15 @@ The stable setup is not "one magic machine." It is a small chain of layers:
 
 - Android microphone path into Windows
 - WSL audio bridge
+- `voice-mode` local audio plus STT/TTS
 - Claude Code MCP registration
 - `voice-mode` user config
 - environment-variable-based secret handling
+
+Troubleshooting shortcut:
+
+- Audio or transcription failure: start with Windows, WSL, and `voice-mode`.
+- Missing MCP tool: start with Claude Code registration.
+- Wrong spoken behavior: start with Claude Code session setup and prompt wording.
 
 If those layers remain intact, the stable Claude Code plus MCP workflow is the path to preserve.

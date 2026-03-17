@@ -12,15 +12,22 @@ The stable track is Claude Code plus the `voice-mode` MCP server.
 
 Treat the Claude Code plus MCP path as the day-to-day supported workflow. Do not treat the standalone `uvx voice-mode converse --continuous` command as the stable assistant path.
 
+Responsibility boundary:
+
+- `voice-mode` owns local audio capture, local audio playback, speech-to-text, and text-to-speech.
+- Claude Code invokes `voice-mode` over MCP and provides the decision layer for when to listen, when to speak, and what should stay on screen.
+
 ## Current Working Path
 
 The known-good flow is:
 
 1. An Android microphone is routed into Windows through an audio input bridge.
 2. WSL audio bridging exposes that path to Linux applications in WSL.
-3. Claude Code runs inside WSL and can see the registered `voice-mode` MCP server.
-4. Claude Code calls the `voice-mode` `converse` tool for spoken turns.
-5. OpenAI STT handles transcription and OpenAI TTS handles spoken replies.
+3. `voice-mode` runs locally with access to that audio path and to `OPENAI_API_KEY`.
+4. Claude Code runs inside WSL and can see the registered `voice-mode` MCP server.
+5. Claude Code calls the `voice-mode` `converse` tool for spoken turns.
+6. `voice-mode` captures microphone audio, performs STT and TTS work, and plays spoken output locally.
+7. Claude Code receives the result from `voice-mode` and decides the next action, including what to say and what detail should remain on screen.
 
 ## Required Local Assumptions
 
@@ -31,14 +38,23 @@ The known-good flow is:
 
 See `apps/claude_code_voice/docs/local-setup-notes.md` for the redacted local setup summary.
 
+## Troubleshooting Direction
+
+Use the owner boundary to decide where to debug first:
+
+- If the problem is microphone input, speaker output, transcription, or speech playback, start with the Android to Windows path, the WSL audio bridge, and `voice-mode` configuration.
+- If the problem is that Claude Code cannot see or call `voice-mode`, start with Claude Code MCP registration.
+- If the problem is conversational behavior, prompt behavior, or how much detail is spoken versus left on screen, start with Claude Code session setup and the session-start prompt.
+
 ## Session Start
 
 1. Confirm the microphone path is still available from Android to Windows and through WSL audio.
-2. Start Claude Code inside WSL.
-3. Confirm the `voice-mode` MCP server is visible and healthy in Claude Code.
-4. Paste the prompt from `apps/claude_code_voice/prompts/session_start.md`.
-5. Let Claude speak the opening line: `Voice work mode active. What would you like to do?`
-6. Continue as a spoken work session while detailed output stays on screen.
+2. Confirm that `voice-mode` still has access to the local audio path and the required environment variables.
+3. Start Claude Code inside WSL.
+4. Confirm the `voice-mode` MCP server is visible and healthy in Claude Code.
+5. Paste the prompt from `apps/claude_code_voice/prompts/session_start.md`.
+6. Let Claude speak the opening line: `Voice work mode active. What would you like to do?`
+7. Continue as a spoken work session while detailed output stays on screen.
 
 ## Spoken Output Rules
 
@@ -67,7 +83,7 @@ These in-session phrases are part of the stable workflow:
 
 ### Stable
 
-Use Claude Code plus MCP for real work sessions. Claude supplies the decision layer, decides when to call `converse`, and decides what should be spoken versus left on screen.
+Use Claude Code plus MCP for real work sessions. Claude Code supplies the decision layer, decides when to call `converse`, and decides what should be spoken versus left on screen. `voice-mode` handles the local audio and STT/TTS work for those turns.
 
 ### Diagnostic
 

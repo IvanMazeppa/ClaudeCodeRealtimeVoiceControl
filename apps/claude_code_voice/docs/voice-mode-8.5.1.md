@@ -42,7 +42,7 @@ If the standalone continuous CLI regresses later, that does not automatically me
 
 ## Local Patch Requirement For The CLI Path
 
-On the known-good local setup, the standalone CLI path needed a local patch to the installed `voice-mode` CLI code path.
+On the known-good local setup, the standalone CLI path used a local patch to the installed `voice-mode` CLI code path.
 
 That local patch was needed to stop the continuous standalone path from sending empty strings to TTS.
 
@@ -51,7 +51,11 @@ Important separation:
 - the patch requirement applied to the standalone CLI path
 - the stable Claude Code plus MCP workflow did not depend on that standalone continuous loop
 
-Because the patch lives against installed package files, it may need to be reapplied after a reinstall, cache refresh, or package update.
+Current repo state:
+
+- this repository does not yet contain a tracked patch artifact for that local CLI fix
+- this document records the existence of the local workaround, but the workaround is not yet repo-owned
+- until a tracked patch artifact is added, any reapplication remains a manual local concern outside this repository
 
 ## Durable Takeaway
 
