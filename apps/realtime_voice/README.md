@@ -1,11 +1,16 @@
 # Realtime Voice
 
-This app directory is reserved for a future experimental realtime voice application.
+## Non-Goals First
 
-## Purpose
+- This track is not implemented yet.
+- This track is intentionally separate from the Claude Code integration track in `apps/claude_code_voice/`.
+- No shared runtime should be assumed between the two tracks.
+- Do not add runtime code, shared process assumptions, or integration glue here until a later task explicitly authorizes it.
 
-Use this area only for research-oriented documentation and later prototypes once the experimental direction is approved.
+## Why This Exists
+
+This directory reserves a clean lane for future realtime voice research without tangling that work into the stable Claude Code integration lane.
 
 ## Current Status
 
-Task 1 keeps this track placeholder-only by design. No implementation details, stack decisions, or product behavior are committed here yet.
+Task 7 keeps this track placeholder-only by design. The current contents are documentation only, and they exist to define boundaries before any experiment is approved.
