@@ -1,18 +1,19 @@
 # Migration Notes
 
-## Status
+## Authoritative Since
 
-Placeholder notes for future migrations inside this repository.
+`voice_coding_research` became the authoritative home for the migrated Claude Code voice workflow docs on `2026-03-17`.
 
-## Intended Scope
+## What Was Migrated
 
-This file will later track migration decisions such as:
+- The canonical workflow guide moved from `PlasmaDXR/docs/CLAUDE_CODE_VOICE_MODE_GUIDE.md` to `docs/claude-code-workflow.md`.
+- The canonical session-start prompt moved from `PlasmaDXR/docs/CLAUDE_CODE_VOICE_WORK_MODE_PROMPT.md` to `apps/claude_code_voice/prompts/session_start.md`.
+- The historical `PlasmaDXR` documents were retained only as pointer docs that send readers to the canonical copies in this repository.
 
-- moving ad hoc workflow materials into structured repo locations
-- updating version-pinned voice-mode assets
-- promoting research outputs into stable documentation
-- recording important compatibility or transition notes between approaches
+## What Remained Machine-Local
 
-## Current Constraint
-
-Task 1 sets up the container for migration notes but does not define any migration procedure yet.
+- User-level Claude Code MCP registration for the `voice-mode` server.
+- User-level `voice-mode` runtime configuration.
+- Per-machine Windows and WSL audio routing details, including the phone-to-Windows and Windows-to-WSL bridge path.
+- Secrets and environment-specific values such as `OPENAI_API_KEY`.
+- OS-level voice control setup outside the repo-tracked workflow docs.
