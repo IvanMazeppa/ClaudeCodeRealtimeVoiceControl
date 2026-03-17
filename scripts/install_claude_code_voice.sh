@@ -241,10 +241,10 @@ else
 fi
 
 printf '\nRecommended next steps:\n'
-printf '  1. Review the merge suggestions from scripts/sync_local_config.sh.\n'
-printf '  2. Run scripts/verify_audio_stack.sh.\n'
-printf '  3. Run scripts/verify_voicemode.sh for the pinned stable smoke test.\n'
-printf '  4. Only if you need the standalone continuous CLI path on 8.5.1, run scripts/apply_voicemode_patch.sh [--target PATH] --apply.\n'
+printf '  1. If you want to re-run the merge-only config suggestions, run: bash "%s"\n' "${SCRIPT_DIR}/sync_local_config.sh"
+printf '  2. Run: bash "%s"\n' "${SCRIPT_DIR}/verify_audio_stack.sh"
+printf '  3. Run: bash "%s" for the pinned stable smoke test.\n' "${SCRIPT_DIR}/verify_voicemode.sh"
+printf '  4. Only if you need the standalone continuous CLI path on 8.5.1, run: bash "%s" [--target PATH] --apply\n' "${SCRIPT_DIR}/apply_voicemode_patch.sh"
 printf '     Use --patch-target PATH with this installer when multiple installed voice-mode copies exist.\n'
 
 if [ "${failures}" -ne 0 ]; then

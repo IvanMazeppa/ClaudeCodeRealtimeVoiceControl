@@ -40,21 +40,27 @@ Why:
 
 If the standalone continuous CLI regresses later, that does not automatically mean the Claude Code MCP path is broken. The Claude Code MCP path works without depending on the standalone continuous loop.
 
-## Local Patch Requirement For The CLI Path
+## Historical Patch Support For Unfixed CLI Copies
 
-For `voice-mode==8.5.1`, standalone `uvx --from voice-mode==8.5.1 voice-mode converse --continuous` may require the canonical patch artifact in this repository:
+For `voice-mode==8.5.1`, standalone `uvx --from voice-mode==8.5.1 voice-mode converse --continuous` may still need the canonical patch artifact in this repository if the targeted installed copy does not already include the effective empty-TTS follow-up logic:
 
 `patches/voice-mode/8.5.1/cli-empty-tts.patch`
 
-That patch captures the standalone continuous-loop fix for the installed `voice-mode` CLI path:
+That patch artifact captures the historical minimal delta for unfixed standalone continuous-loop copies:
 
 - empty follow-up turn
 - forced listen-only behavior on that follow-up turn
 - no empty-string TTS call
 
+Important nuance:
+
+- current shipped `uvx --from voice-mode==8.5.1` installs may already include equivalent logic in `voice_mode/cli.py`
+- that means patch dry-run may fail even though the target copy is already effectively fixed
+- `scripts/apply_voicemode_patch.sh` should detect that already-fixed code path and exit successfully without trying to apply the historical patch
+
 Important separation:
 
-- the patch requirement applies to standalone `uvx --from voice-mode==8.5.1 voice-mode converse --continuous`
+- the historical patch artifact only matters for standalone `uvx --from voice-mode==8.5.1 voice-mode converse --continuous` copies that are still unfixed
 - the stable Claude Code plus MCP workflow does not depend on the standalone continuous loop
 - the canonical patch artifact now lives in this repository at `patches/voice-mode/8.5.1/cli-empty-tts.patch`
 
@@ -62,4 +68,4 @@ Important separation:
 
 For version `8.5.1`, the stable track is Claude Code plus MCP.
 
-Treat the standalone CLI as a troubleshooting or experimental path, not as the source of truth for the supported workflow. If standalone `--continuous` behavior matters on `8.5.1`, apply `patches/voice-mode/8.5.1/cli-empty-tts.patch`.
+Treat the standalone CLI as a troubleshooting or experimental path, not as the source of truth for the supported workflow. If standalone `--continuous` behavior matters on `8.5.1`, use `scripts/apply_voicemode_patch.sh` against the specific install you care about; it should either detect the effective shipped fix or confirm that the historical patch is needed.

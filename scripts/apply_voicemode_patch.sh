@@ -19,6 +19,10 @@ Locates one installed voice_mode/cli.py, confirms the 8.5.1 version assumption a
 best as possible, performs a patch dry-run first, and only applies the patch when
 --apply is explicitly requested.
 
+Current shipped voice-mode==8.5.1 installs may already contain equivalent
+empty-TTS follow-up logic. This helper detects that already-fixed code path and
+exits successfully without trying to apply the historical patch artifact.
+
 This script refuses to silently patch multiple installs.
 EOF
 }
@@ -193,6 +197,31 @@ else
     if [ "${FORCE}" -ne 1 ]; then
         die "Refusing to patch an install with unknown version. Re-run with --force only after manual review."
     fi
+fi
+
+effective_fix_present="$(
+    python3 - "${CLI_PATH}" <<'PY'
+from pathlib import Path
+import sys
+
+cli_path = Path(sys.argv[1])
+text = cli_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+for index, line in enumerate(text):
+    if 'message=""' not in line:
+        continue
+    window = text[index:index + 20]
+    if any("skip_tts=True if skip_tts is None else skip_tts" in candidate for candidate in window):
+        print("yes")
+        break
+else:
+    print("no")
+PY
+)" || die "Could not inspect ${CLI_PATH} for the empty-TTS follow-up fix"
+
+if [ "${effective_fix_present}" = "yes" ]; then
+    note "Target already contains the effective empty-TTS follow-up fix. Current shipped voice-mode==${EXPECTED_VERSION} installs may already include equivalent logic, so no patch is needed."
+    exit 0
 fi
 
 if patch --dry-run -R -p1 -d "${SITE_PACKAGES_DIR}" < "${PATCH_FILE}" >/dev/null 2>&1; then
