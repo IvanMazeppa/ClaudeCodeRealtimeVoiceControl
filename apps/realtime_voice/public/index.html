@@ -122,7 +122,7 @@
         <div class="meta-row">
           <div>
             <span class="meta-label">Model</span>
-            <strong id="model-label">gpt-realtime</strong>
+            <strong id="model-label">gpt-realtime-1.5</strong>
           </div>
           <div>
             <span class="meta-label">Token expiry</span>
@@ -151,6 +151,100 @@
             </div>
           </div>
           <div id="event-log" class="event-log"></div>
+        </article>
+      </section>
+
+      <section class="panel bridge-panel">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Python Supervisor</p>
+            <h2>Drive Claude Code without copy and paste</h2>
+          </div>
+          <div class="status-block">
+            <span class="status-dot" id="supervisor-status-dot"></span>
+            <span id="supervisor-status-text">Loading supervisor state</span>
+          </div>
+        </div>
+
+        <p class="lede companion-lede">
+          The browser stays focused on low-latency voice, while the Python supervisor manages a
+          structured Claude terminal harness behind the scenes. In the happy path, you speak,
+          send the last heard turn to Claude Code, and review approvals or terminal state here.
+        </p>
+
+        <div class="bridge-meta">
+          <div>
+            <span class="meta-label">Supervisor model</span>
+            <strong id="supervisor-model-label">gpt-5.4</strong>
+          </div>
+          <div>
+            <span class="meta-label">Supervisor session</span>
+            <strong id="supervisor-session-label">Loading...</strong>
+          </div>
+        </div>
+
+        <div class="button-row bridge-buttons">
+          <button id="supervisor-start-btn" class="button" type="button">Start / verify Claude</button>
+          <button id="supervisor-send-last-btn" class="button primary" type="button">Send last heard turn</button>
+          <button id="supervisor-observe-btn" class="button" type="button">Read Claude state</button>
+          <button id="supervisor-interrupt-btn" class="button" type="button">Interrupt Claude</button>
+        </div>
+
+        <label class="control bridge-prompt">
+          <span>Manual Claude prompt draft</span>
+          <textarea
+            id="supervisor-prompt-input"
+            class="prompt-textarea bridge-textarea"
+            placeholder="Refine a prompt here when you want to send something more specific than the last heard turn."
+          ></textarea>
+        </label>
+
+        <div class="button-row bridge-prompt-actions">
+          <button id="supervisor-use-last-btn" class="button" type="button">Use last heard turn</button>
+          <button id="supervisor-send-draft-btn" class="button primary" type="button">Send draft to Claude</button>
+          <button id="supervisor-clear-draft-btn" class="button" type="button">Clear draft</button>
+        </div>
+
+        <div class="controls-grid supervisor-grid">
+          <article class="bridge-output">
+            <div class="panel-header bridge-output-header">
+              <div>
+                <p class="panel-kicker">Approvals</p>
+                <h3>Pending risky actions</h3>
+              </div>
+            </div>
+            <div id="approval-list" class="approval-list">No approvals pending.</div>
+          </article>
+
+          <article class="bridge-output">
+            <div class="panel-header bridge-output-header">
+              <div>
+                <p class="panel-kicker">Action Log</p>
+                <h3>Supervisor activity</h3>
+              </div>
+            </div>
+            <div id="supervisor-action-log" class="event-log compact-log"></div>
+          </article>
+        </div>
+
+        <article class="bridge-output">
+          <div class="panel-header bridge-output-header">
+            <div>
+              <p class="panel-kicker">Claude Snapshot</p>
+              <h3>Visible terminal capture</h3>
+            </div>
+          </div>
+          <pre id="terminal-snapshot" class="claude-output terminal-snapshot">The latest visible Claude terminal output will appear here.</pre>
+        </article>
+
+        <article class="bridge-output">
+          <div class="panel-header bridge-output-header">
+            <div>
+              <p class="panel-kicker">Supervisor Notes</p>
+              <h3>Current spoken response</h3>
+            </div>
+          </div>
+          <pre id="supervisor-feedback" class="claude-output">Connect the Realtime session, then use the Python supervisor to work with Claude Code through the browser.</pre>
         </article>
       </section>
     </main>

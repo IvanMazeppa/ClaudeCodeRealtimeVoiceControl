@@ -1,0 +1,16 @@
+{
+  "sessionName": "voice-coding-claude",
+  "workingDirectory": ".",
+  "command": "claude",
+  "captureLines": 160,
+  "startupPromptFile": "apps/claude_code_voice/prompts/session_start.md",
+  "startupSettleMs": 1200,
+  "modePhrases": {
+    "brief": "voice brief mode",
+    "detail": "voice detail mode",
+    "coding": "voice coding mode",
+    "summarize": "summarize",
+    "details": "details",
+    "nextStep": "next step"
+  }
+}

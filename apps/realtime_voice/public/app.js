@@ -17,6 +17,24 @@ const statusText = document.getElementById("status-text");
 const statusDot = document.getElementById("status-dot");
 const expiryLabel = document.getElementById("expiry-label");
 const modelLabel = document.getElementById("model-label");
+
+const supervisorStatusText = document.getElementById("supervisor-status-text");
+const supervisorStatusDot = document.getElementById("supervisor-status-dot");
+const supervisorFeedback = document.getElementById("supervisor-feedback");
+const supervisorModelLabel = document.getElementById("supervisor-model-label");
+const supervisorSessionLabel = document.getElementById("supervisor-session-label");
+const supervisorPromptInput = document.getElementById("supervisor-prompt-input");
+const supervisorStartButton = document.getElementById("supervisor-start-btn");
+const supervisorSendLastButton = document.getElementById("supervisor-send-last-btn");
+const supervisorObserveButton = document.getElementById("supervisor-observe-btn");
+const supervisorInterruptButton = document.getElementById("supervisor-interrupt-btn");
+const supervisorUseLastButton = document.getElementById("supervisor-use-last-btn");
+const supervisorSendDraftButton = document.getElementById("supervisor-send-draft-btn");
+const supervisorClearDraftButton = document.getElementById("supervisor-clear-draft-btn");
+const approvalList = document.getElementById("approval-list");
+const supervisorActionLog = document.getElementById("supervisor-action-log");
+const terminalSnapshot = document.getElementById("terminal-snapshot");
+
 const supportedVoices = new Set([
   "alloy",
   "ash",
@@ -31,6 +49,7 @@ const supportedVoices = new Set([
 ]);
 const promptPresetStorageKey = "realtimeVoice.selectedPreset";
 const promptCustomStorageKey = "realtimeVoice.customInstructions";
+const supervisorSessionStorageKey = "realtimeVoice.supervisorSessionId";
 
 let peerConnection = null;
 let dataChannel = null;
@@ -40,6 +59,7 @@ let remoteAudio = null;
 let isMuted = false;
 let userDrafts = new Map();
 let assistantDrafts = new Map();
+let lastUserTurn = "";
 let promptConfig = {
   baseInstructions: "",
   presets: []
@@ -64,16 +84,25 @@ function selectedVoice() {
   return "marin";
 }
 
+function applyStatusTone(targetDot, tone = "idle") {
+  targetDot.className = "status-dot";
+  if (tone === "live") {
+    targetDot.classList.add("live");
+  } else if (tone === "busy") {
+    targetDot.classList.add("busy");
+  } else if (tone === "error") {
+    targetDot.classList.add("error");
+  }
+}
+
 function setStatus(label, tone = "idle") {
   statusText.textContent = label;
-  statusDot.className = "status-dot";
-  if (tone === "live") {
-    statusDot.classList.add("live");
-  } else if (tone === "busy") {
-    statusDot.classList.add("busy");
-  } else if (tone === "error") {
-    statusDot.classList.add("error");
-  }
+  applyStatusTone(statusDot, tone);
+}
+
+function setSupervisorStatus(label, tone = "idle") {
+  supervisorStatusText.textContent = label;
+  applyStatusTone(supervisorStatusDot, tone);
 }
 
 function setLiveBanner(text) {
@@ -109,6 +138,10 @@ function addMessage(role, text) {
   `;
   wrapper.querySelector(".message-body").textContent = text.trim();
   transcriptList.prepend(wrapper);
+
+  if (role === "user") {
+    lastUserTurn = text.trim();
+  }
 }
 
 function updateDraft(map, key, delta) {
@@ -304,6 +337,12 @@ function handleRealtimeEvent(event) {
   }
 }
 
+function ensureRealtimeReady() {
+  if (!dataChannel || dataChannel.readyState !== "open") {
+    throw new Error("Connect to the Realtime session first.");
+  }
+}
+
 async function requestToken() {
   const response = await fetch("/api/token", {
     method: "POST",
@@ -321,7 +360,7 @@ async function requestToken() {
     throw new Error(data.detail || data.error || "Token request failed.");
   }
 
-  modelLabel.textContent = data.model || "gpt-realtime";
+  modelLabel.textContent = data.model || "gpt-realtime-1.5";
   expiryLabel.textContent = data.expires_at
     ? new Date(data.expires_at * 1000).toLocaleTimeString()
     : "Unknown";
@@ -458,6 +497,260 @@ function markPromptDirty() {
   setPromptSaveStatus("Unsaved local changes", true);
 }
 
+function getSupervisorSessionId() {
+  const existing = localStorage.getItem(supervisorSessionStorageKey);
+  if (existing) {
+    return existing;
+  }
+
+  const generated = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `supervisor-${Date.now()}`;
+  localStorage.setItem(supervisorSessionStorageKey, generated);
+  return generated;
+}
+
+function setSupervisorFeedback(text) {
+  supervisorFeedback.textContent = text && text.trim()
+    ? text
+    : "The Python supervisor is ready when you are.";
+}
+
+function setTerminalSnapshot(text) {
+  terminalSnapshot.textContent = text && text.trim()
+    ? text
+    : "The latest visible Claude terminal output will appear here.";
+}
+
+function renderSupervisorActionLog(items) {
+  supervisorActionLog.innerHTML = "";
+  if (!items || !items.length) {
+    const empty = document.createElement("article");
+    empty.className = "event";
+    empty.innerHTML = "<strong>idle</strong><span>No supervisor actions yet.</span>";
+    supervisorActionLog.append(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const entry = document.createElement("article");
+    entry.className = "event";
+    entry.innerHTML = `<strong>${item.type || "action"}</strong><span>${item.detail || ""}</span>`;
+    supervisorActionLog.append(entry);
+  });
+}
+
+function renderApprovals(items) {
+  approvalList.innerHTML = "";
+  if (!items || !items.length) {
+    approvalList.textContent = "No approvals pending.";
+    return;
+  }
+
+  items.forEach((item) => {
+    const wrapper = document.createElement("article");
+    wrapper.className = "approval-card";
+    wrapper.dataset.callId = item.callId;
+    const argumentsText = typeof item.arguments === "string"
+      ? item.arguments
+      : JSON.stringify(item.arguments || {}, null, 2);
+    wrapper.innerHTML = `
+      <strong>${item.toolName || "approval required"}</strong>
+      <p>${argumentsText}</p>
+      <div class="button-row">
+        <button class="button primary" type="button" data-approval="approve">Approve</button>
+        <button class="button" type="button" data-approval="reject">Reject</button>
+      </div>
+    `;
+    approvalList.append(wrapper);
+  });
+}
+
+function speakText(text) {
+  if (!text || !("speechSynthesis" in window)) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
+async function callSupervisor(path, payload = {}) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      sessionId: getSupervisorSessionId(),
+      ...payload
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.detail || data.error || "Supervisor request failed.");
+  }
+  return data;
+}
+
+function applySupervisorResponse(data, { speak = true, addTranscriptMessage = true } = {}) {
+  supervisorModelLabel.textContent = data.supervisorModel || supervisorModelLabel.textContent;
+  supervisorSessionLabel.textContent = data.sessionId || getSupervisorSessionId();
+  setSupervisorFeedback(data.spokenResponse || "The Python supervisor finished without a spoken summary.");
+  setTerminalSnapshot(data.terminalSnapshot || "");
+  renderSupervisorActionLog(Array.isArray(data.actionLog) ? data.actionLog : []);
+  renderApprovals(Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []);
+
+  if (data.pendingApprovals?.length) {
+    setSupervisorStatus("Awaiting approval", "busy");
+  } else if (data.claudeSessionExists) {
+    setSupervisorStatus(data.terminalReady ? "Claude ready" : "Claude busy", data.terminalReady ? "live" : "busy");
+  } else {
+    setSupervisorStatus("Claude not attached", "idle");
+  }
+
+  if (data.spokenResponse && addTranscriptMessage) {
+    addMessage("assistant", data.spokenResponse);
+  }
+  if (data.spokenResponse && speak) {
+    speakText(data.spokenResponse);
+  }
+}
+
+async function refreshSupervisorHealth() {
+  try {
+    const response = await fetch("/api/supervisor/health");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || data.error || "Supervisor health failed.");
+    }
+
+    supervisorModelLabel.textContent = data.supervisorModel || "gpt-5.4";
+    supervisorSessionLabel.textContent = getSupervisorSessionId();
+    setTerminalSnapshot(data.terminal?.output || "");
+    renderSupervisorActionLog([]);
+    renderApprovals([]);
+    setSupervisorFeedback("Supervisor loaded. Start or verify Claude when you want the backend to take over.");
+    if (data.terminal?.session_exists) {
+      setSupervisorStatus(data.terminal.ready ? "Claude ready" : "Claude busy", data.terminal.ready ? "live" : "busy");
+    } else {
+      setSupervisorStatus("Claude not attached", "idle");
+    }
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_health_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function startSupervisorClaude() {
+  setSupervisorStatus("Starting", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/session");
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_start_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function observeClaudeState() {
+  setSupervisorStatus("Observing", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/observe");
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_observe_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function sendLastHeardTurn() {
+  if (!lastUserTurn) {
+    setSupervisorFeedback("No spoken turn is available yet. Speak first, or send a manual draft.");
+    return;
+  }
+
+  setSupervisorStatus("Sending", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/turn", {
+      userText: lastUserTurn
+    });
+    applySupervisorResponse(data, {
+      addTranscriptMessage: true
+    });
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_turn_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+function useLastHeardTurn() {
+  if (!lastUserTurn) {
+    setSupervisorFeedback("No spoken turn is available yet. Speak first to seed the draft box.");
+    return;
+  }
+
+  supervisorPromptInput.value = lastUserTurn;
+  setSupervisorFeedback("Moved the last heard turn into the manual prompt draft box.");
+}
+
+async function sendManualDraft() {
+  const prompt = supervisorPromptInput.value.trim();
+  if (!prompt) {
+    setSupervisorFeedback("Type a manual prompt first, or use the last heard turn.");
+    return;
+  }
+
+  setSupervisorStatus("Sending", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/manual-prompt", {
+      prompt
+    });
+    applySupervisorResponse(data, {
+      addTranscriptMessage: true
+    });
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_manual_prompt_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function interruptClaude() {
+  setSupervisorStatus("Interrupting", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/interrupt");
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_interrupt_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function handleApprovalDecision(callId, approve) {
+  setSupervisorStatus("Resolving approval", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/decision", {
+      callId,
+      approve,
+      rejectionMessage: approve ? undefined : "The user rejected this terminal action."
+    });
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("supervisor_approval_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
 presetSelect.addEventListener("change", () => {
   renderPresetSummary();
   markPromptDirty();
@@ -472,6 +765,36 @@ connectButton.addEventListener("click", connect);
 disconnectButton.addEventListener("click", disconnect);
 muteButton.addEventListener("click", toggleMute);
 
+supervisorStartButton.addEventListener("click", startSupervisorClaude);
+supervisorSendLastButton.addEventListener("click", sendLastHeardTurn);
+supervisorObserveButton.addEventListener("click", observeClaudeState);
+supervisorInterruptButton.addEventListener("click", interruptClaude);
+supervisorUseLastButton.addEventListener("click", useLastHeardTurn);
+supervisorSendDraftButton.addEventListener("click", sendManualDraft);
+supervisorClearDraftButton.addEventListener("click", () => {
+  supervisorPromptInput.value = "";
+  setSupervisorFeedback("Cleared the manual Claude prompt draft.");
+});
+approvalList.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const action = target.dataset.approval;
+  if (!action) {
+    return;
+  }
+
+  const card = target.closest(".approval-card");
+  const callId = card?.dataset.callId;
+  if (!callId) {
+    return;
+  }
+
+  void handleApprovalDecision(callId, action === "approve");
+});
+
 addEvent("ready", "UI loaded. Choose your voice settings and connect when ready.");
 loadPromptConfig()
   .then(() => {
@@ -481,3 +804,6 @@ loadPromptConfig()
     addEvent("prompt_config_error", error instanceof Error ? error.message : String(error));
     setPromptSaveStatus("Prompt presets unavailable");
   });
+renderSupervisorActionLog([]);
+renderApprovals([]);
+refreshSupervisorHealth();

@@ -15,7 +15,7 @@ stable Claude Code plus `voice-mode` path.
 The `realtime v1` goal is:
 
 - direct browser microphone capture
-- OpenAI Realtime speech-to-speech interaction over WebRTC
+- OpenAI Realtime speech-to-speech interaction over WebRTC using `gpt-realtime-1.5`
 - brief spoken replies suitable for coding sessions
 - on-screen transcript and diagnostics visibility
 
@@ -28,6 +28,9 @@ The `realtime v1` goal is:
 - live transcript and event visibility for debugging
 - repo-owned preset personalities
 - local custom system instructions stored in the browser
+- a Python Agents SDK supervisor for Claude Code terminal orchestration
+- approval-gated terminal actions with visible action logs
+- a live Claude terminal snapshot inside the browser UI
 - local `.env` configuration that stays outside git
 
 ## Explicit Non-Goals
@@ -37,7 +40,7 @@ The `realtime v1` goal is:
 - replace the stable Claude Code plus MCP workflow
 - share runtime code with `apps/claude_code_voice/`
 - expose long-lived secrets to the browser
-- add tool-calling or code-edit automation inside the realtime app yet
+- default to screenshot-first computer-use control
 
 ## Decision Rule
 
@@ -45,3 +48,6 @@ Keep using the stable Claude Code lane for normal repository work.
 
 Use the realtime lane when you want to evaluate a more immersive browser-based voice
 assistant without changing the supported stable workflow contract.
+
+Keep `gpt-5.4` computer use as an explicit fallback for later phases when text-native
+terminal capture is insufficient.

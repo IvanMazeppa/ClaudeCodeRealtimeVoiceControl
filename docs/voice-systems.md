@@ -28,9 +28,10 @@ Canonical files:
 Use `apps/realtime_voice/` when you want the experimental browser-based voice prototype:
 
 - direct browser microphone capture
-- OpenAI Realtime speech-to-speech over WebRTC
+- OpenAI Realtime speech-to-speech over WebRTC with `gpt-realtime-1.5`
 - a separate local Node launcher
 - on-screen transcript and event diagnostics
+- a Python supervisor panel that can send turns to Claude Code, show approvals, and surface a live terminal snapshot
 
 Canonical files:
 
@@ -38,6 +39,7 @@ Canonical files:
 - `apps/realtime_voice/docs/overview.md`
 - `apps/realtime_voice/docs/design.md`
 - `apps/realtime_voice/docs/local-setup.md`
+- `apps/realtime_voice/docs/claude-bridge.md`
 
 ## Quick Start Commands
 
@@ -53,6 +55,7 @@ Realtime lane:
 2. open `http://127.0.0.1:4173`
 3. if Windows localhost forwarding fails, open the current WSL IP instead, for example `http://172.31.221.77:4173`
 4. click `Connect`
+5. use the Python Supervisor panel to start or verify Claude, send the last heard turn, and review approval prompts when needed
 
 ## Boundary Reminder
 
