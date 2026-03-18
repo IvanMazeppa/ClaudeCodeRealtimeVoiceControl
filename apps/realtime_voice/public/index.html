@@ -43,8 +43,14 @@
             <select id="voice-select">
               <option value="marin">marin</option>
               <option value="alloy">alloy</option>
+              <option value="ash">ash</option>
+              <option value="ballad">ballad</option>
+              <option value="cedar">cedar</option>
+              <option value="coral">coral</option>
+              <option value="echo">echo</option>
+              <option value="sage">sage</option>
               <option value="shimmer">shimmer</option>
-              <option value="nova">nova</option>
+              <option value="verse">verse</option>
             </select>
           </label>
 
@@ -66,6 +72,46 @@
             </select>
           </label>
         </div>
+
+        <section class="prompt-studio">
+          <div class="prompt-header">
+            <div>
+              <p class="panel-kicker">Prompt Studio</p>
+              <h3>Character presets and custom instructions</h3>
+            </div>
+            <span id="prompt-save-status" class="save-status">Saved locally</span>
+          </div>
+
+          <div class="controls-grid prompt-grid">
+            <label class="control">
+              <span>Character preset</span>
+              <select id="preset-select">
+                <option value="">Loading presets...</option>
+              </select>
+            </label>
+
+            <div class="preset-card">
+              <span class="meta-label">Preset summary</span>
+              <p id="preset-summary" class="preset-summary">
+                Preset prompt details will appear here.
+              </p>
+            </div>
+          </div>
+
+          <label class="control">
+            <span>Custom system instructions</span>
+            <textarea
+              id="custom-instructions"
+              class="prompt-textarea"
+              placeholder="Add your own instructions here. These are stored locally in the browser and appended to the selected preset."
+            ></textarea>
+          </label>
+
+          <div class="button-row prompt-buttons">
+            <button id="save-prompt-btn" class="button" type="button">Save prompt</button>
+            <button id="clear-prompt-btn" class="button" type="button">Clear custom</button>
+          </div>
+        </section>
 
         <div class="button-row">
           <button id="connect-btn" class="button primary">Connect</button>

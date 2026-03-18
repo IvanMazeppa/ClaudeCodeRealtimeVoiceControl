@@ -18,6 +18,8 @@ If the browser-based realtime app fails:
 - open the browser devtools console and the in-app event log
 - confirm the browser has microphone permission
 - hit `http://127.0.0.1:4173/health` and confirm the local server reports `ok: true`
+- if Windows says `127.0.0.1 refused to connect`, try the current WSL IP instead, such
+  as `http://172.31.221.77:4173`
 
 ## Boundary Reminder
 

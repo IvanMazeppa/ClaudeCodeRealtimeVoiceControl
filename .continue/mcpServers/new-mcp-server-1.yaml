@@ -1,0 +1,12 @@
+name: voice-mode
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: voice-mode
+    command: uvx
+    args:
+      - --from
+      - voice-mode==8.5.1
+      - voice-mode
+    env:
+      OPENAI_API_KEY: ${env:OPENAI_API_KEY}

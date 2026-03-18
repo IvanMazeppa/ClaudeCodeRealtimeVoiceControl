@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 APP_DIR="${REPO_ROOT}/apps/realtime_voice"
 
-if ! command -v npm >/dev/null 2>&1; then
-    printf '[fail] npm was not found on PATH\n' >&2
+if ! command -v node >/dev/null 2>&1; then
+    printf '[fail] node was not found on PATH\n' >&2
     exit 1
 fi
 
@@ -23,4 +23,4 @@ if [ ! -d "${APP_DIR}/node_modules" ]; then
 fi
 
 printf '[info] Starting realtime voice app from %s\n' "${APP_DIR}"
-npm run dev --prefix "${APP_DIR}"
+exec node "${APP_DIR}/server.mjs"

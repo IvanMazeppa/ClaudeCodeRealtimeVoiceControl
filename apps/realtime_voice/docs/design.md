@@ -17,9 +17,21 @@ Why:
    `OPENAI_API_KEY`.
 3. The browser opens a WebRTC peer connection to the Realtime API.
 4. The browser sends a `session.update` event over the data channel to apply voice,
-   transcript, and turn-detection preferences.
+   transcript, prompt, and turn-detection preferences.
 5. The browser renders live status, transcripts, and diagnostics while audio flows over
    WebRTC.
+
+## Prompt Composition
+
+The final system instructions are composed from four layers:
+
+1. the repo-owned base prompt in `apps/realtime_voice/prompts/system_prompt.txt`
+2. an optional repo-owned preset under `apps/realtime_voice/prompts/presets/`
+3. the currently selected spoken style
+4. optional user-authored custom instructions stored locally in the browser
+
+This keeps shared defaults in editable repo files while letting the user personalize the
+assistant without committing machine-local preferences into git.
 
 ## Turn Handling
 

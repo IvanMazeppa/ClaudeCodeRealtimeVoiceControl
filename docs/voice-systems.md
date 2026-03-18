@@ -51,7 +51,8 @@ Realtime lane:
 
 1. `bash scripts/start_realtime_voice.sh`
 2. open `http://127.0.0.1:4173`
-3. click `Connect`
+3. if Windows localhost forwarding fails, open the current WSL IP instead, for example `http://172.31.221.77:4173`
+4. click `Connect`
 
 ## Boundary Reminder
 

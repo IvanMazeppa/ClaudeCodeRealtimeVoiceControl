@@ -26,6 +26,8 @@ The `realtime v1` goal is:
 - a local Node server that mints short-lived Realtime client secrets
 - a browser UI that manages mic permissions, connection state, and audio playback
 - live transcript and event visibility for debugging
+- repo-owned preset personalities
+- local custom system instructions stored in the browser
 - local `.env` configuration that stays outside git
 
 ## Explicit Non-Goals

@@ -43,8 +43,12 @@ From `apps/realtime_voice/`:
 1. `npm install`
 2. `npm run dev`
 3. Open `http://127.0.0.1:4173`
-4. Allow microphone access in the browser
-5. Click `Connect`
+4. If Windows cannot reach WSL localhost, use the current WSL IP such as
+   `http://172.31.221.77:4173`
+5. Allow microphone access in the browser
+6. Pick a preset prompt and optionally add custom system instructions
+7. Click `Save prompt` if you want those custom instructions stored locally in the browser
+8. Click `Connect`
 
 ## Security Boundary
 
@@ -53,6 +57,8 @@ The browser must not receive the long-lived OpenAI API key.
 The local Node server uses `OPENAI_API_KEY` only to mint short-lived Realtime client
 secrets via the OpenAI REST API. The browser then uses that short-lived secret to open a
 WebRTC session directly with OpenAI.
+
+Custom prompt text is stored locally in the browser, not in repo-tracked files.
 
 ## Relationship To The Stable Lane
 

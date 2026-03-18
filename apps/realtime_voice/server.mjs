@@ -9,13 +9,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const host = process.env.REALTIME_HOST || "127.0.0.1";
+const host = process.env.REALTIME_HOST || "0.0.0.0";
 const port = Number(process.env.REALTIME_PORT || 4173);
 const model = process.env.REALTIME_MODEL || "gpt-realtime";
 const defaultVoice = process.env.REALTIME_VOICE || "marin";
 const apiKey = process.env.OPENAI_API_KEY;
 const publicDir = path.join(__dirname, "public");
 const promptPath = path.join(__dirname, "prompts", "system_prompt.txt");
+const presetDir = path.join(__dirname, "prompts", "presets");
+const supportedVoices = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "cedar",
+  "coral",
+  "echo",
+  "marin",
+  "sage",
+  "shimmer",
+  "verse"
+]);
 
 app.use(express.json());
 app.use(express.static(publicDir));
@@ -28,11 +41,62 @@ function readInstructions() {
   }
 }
 
-function buildSession(voice = defaultVoice) {
+function titleizePreset(id) {
+  return id
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function loadPresetPrompts() {
+  try {
+    const entries = fs.readdirSync(presetDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".txt"))
+      .map((entry) => {
+        const id = entry.name.replace(/\.txt$/, "");
+        const content = fs
+          .readFileSync(path.join(presetDir, entry.name), "utf8")
+          .trim();
+
+        return {
+          id,
+          title: titleizePreset(id),
+          content
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeInstructions(value) {
+  if (typeof value !== "string") {
+    return readInstructions();
+  }
+
+  const trimmed = value.trim();
+  return trimmed || readInstructions();
+}
+
+function normalizeVoice(voice) {
+  if (typeof voice === "string" && supportedVoices.has(voice)) {
+    return voice;
+  }
+
+  return supportedVoices.has(defaultVoice) ? defaultVoice : "marin";
+}
+
+function buildSession({
+  voice = defaultVoice,
+  instructions = readInstructions()
+} = {}) {
   return {
     type: "realtime",
     model,
-    instructions: readInstructions(),
+    instructions: normalizeInstructions(instructions),
     output_modalities: ["audio"],
     audio: {
       input: {
@@ -58,7 +122,7 @@ function buildSession(voice = defaultVoice) {
           type: "audio/pcm",
           rate: 24000
         },
-        voice
+        voice: normalizeVoice(voice)
       }
     }
   };
@@ -68,8 +132,16 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     model,
-    defaultVoice,
+    defaultVoice: normalizeVoice(defaultVoice),
+    supportedVoices: [...supportedVoices],
     hasApiKey: Boolean(apiKey)
+  });
+});
+
+app.get("/api/prompt-config", (_req, res) => {
+  res.json({
+    baseInstructions: readInstructions(),
+    presets: loadPresetPrompts()
   });
 });
 
@@ -81,16 +153,18 @@ app.post("/api/token", async (req, res) => {
     return;
   }
 
-  const requestedVoice = typeof req.body?.voice === "string" && req.body.voice
-    ? req.body.voice
-    : defaultVoice;
+  const requestedVoice = normalizeVoice(req.body?.voice || defaultVoice);
+  const requestedInstructions = normalizeInstructions(req.body?.instructions);
 
   const payload = {
     expires_after: {
       anchor: "created_at",
       seconds: 600
     },
-    session: buildSession(requestedVoice)
+    session: buildSession({
+      voice: requestedVoice,
+      instructions: requestedInstructions
+    })
   };
 
   try {
@@ -134,5 +208,8 @@ app.use((_req, res) => {
 });
 
 app.listen(port, host, () => {
-  console.log(`Realtime voice server ready at http://${host}:${port}`);
+  const localhostUrl = `http://127.0.0.1:${port}`;
+  const bindLabel = host === "0.0.0.0" ? "all interfaces" : host;
+  console.log(`Realtime voice server ready on ${bindLabel}:${port}`);
+  console.log(`Try ${localhostUrl} from the same machine or your WSL IP if localhost forwarding is unavailable.`);
 });
