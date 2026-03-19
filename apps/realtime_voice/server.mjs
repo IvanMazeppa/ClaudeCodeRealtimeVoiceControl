@@ -446,6 +446,69 @@ app.post("/api/supervisor/interrupt", async (req, res) => {
   }
 });
 
+app.post("/api/supervisor/explain-latest", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("explain-latest", {
+      sessionId: req.body?.sessionId
+    });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to explain the latest repo changes through the Python supervisor.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post("/api/supervisor/second-opinion", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("second-opinion", {
+      sessionId: req.body?.sessionId,
+      goal: req.body?.goal ?? req.body?.userText
+    });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to generate a second opinion through the Python supervisor.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post("/api/supervisor/draft-claude-prompt", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("draft-claude-prompt", {
+      sessionId: req.body?.sessionId,
+      goal: req.body?.goal ?? req.body?.userText
+    });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to draft a Claude prompt through the Python supervisor.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post("/api/supervisor/explain-approval", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("explain-approval", {
+      sessionId: req.body?.sessionId,
+      callId: req.body?.callId
+    });
+    res.status(data.ok ? 200 : 400).json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to explain the pending approval through the Python supervisor.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 app.post("/api/supervisor/decision", async (req, res) => {
   try {
     const data = await runPythonSupervisor("decision", {

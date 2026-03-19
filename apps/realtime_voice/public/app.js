@@ -34,6 +34,17 @@ const supervisorClearDraftButton = document.getElementById("supervisor-clear-dra
 const approvalList = document.getElementById("approval-list");
 const supervisorActionLog = document.getElementById("supervisor-action-log");
 const terminalSnapshot = document.getElementById("terminal-snapshot");
+const mentorGoalInput = document.getElementById("mentor-goal-input");
+const mentorExplainButton = document.getElementById("mentor-explain-btn");
+const mentorSecondOpinionButton = document.getElementById("mentor-second-opinion-btn");
+const mentorDraftPromptButton = document.getElementById("mentor-draft-prompt-btn");
+const mentorExplainApprovalButton = document.getElementById("mentor-explain-approval-btn");
+const mentorUseDraftButton = document.getElementById("mentor-use-draft-btn");
+const mentorSummary = document.getElementById("mentor-summary");
+const mentorBullets = document.getElementById("mentor-bullets");
+const mentorRisks = document.getElementById("mentor-risks");
+const mentorFiles = document.getElementById("mentor-files");
+const mentorDraftOutput = document.getElementById("mentor-draft-output");
 
 const supportedVoices = new Set([
   "alloy",
@@ -60,6 +71,8 @@ let isMuted = false;
 let userDrafts = new Map();
 let assistantDrafts = new Map();
 let lastUserTurn = "";
+let latestPendingApprovals = [];
+let latestMentorDraft = "";
 let promptConfig = {
   baseInstructions: "",
   presets: []
@@ -541,6 +554,7 @@ function renderSupervisorActionLog(items) {
 }
 
 function renderApprovals(items) {
+  latestPendingApprovals = Array.isArray(items) ? items : [];
   approvalList.innerHTML = "";
   if (!items || !items.length) {
     approvalList.textContent = "No approvals pending.";
@@ -578,6 +592,36 @@ function speakText(text) {
   window.speechSynthesis.speak(utterance);
 }
 
+function renderMentorList(target, items, emptyText) {
+  target.innerHTML = "";
+  if (!items || !items.length) {
+    const item = document.createElement("li");
+    item.textContent = emptyText;
+    target.append(item);
+    return;
+  }
+
+  items.forEach((entry) => {
+    const item = document.createElement("li");
+    item.textContent = entry;
+    target.append(item);
+  });
+}
+
+function renderMentorResponse(data = {}) {
+  const screenSummary = data.screenSummary?.trim();
+  const draft = (data.draftedPrompt || data.draftedFollowUpPrompt || "").trim();
+  latestMentorDraft = draft;
+
+  mentorSummary.textContent = screenSummary
+    || "Mentor results will appear here once you run one of the mentor actions.";
+  renderMentorList(mentorBullets, data.bullets, "No mentor detail yet.");
+  renderMentorList(mentorRisks, data.risks, "No risks highlighted yet.");
+  renderMentorList(mentorFiles, data.changedFiles, "No files highlighted yet.");
+  mentorDraftOutput.textContent = draft || "No drafted Claude prompt yet.";
+  mentorUseDraftButton.disabled = !draft;
+}
+
 async function callSupervisor(path, payload = {}) {
   const response = await fetch(path, {
     method: "POST",
@@ -603,6 +647,7 @@ function applySupervisorResponse(data, { speak = true, addTranscriptMessage = tr
   setTerminalSnapshot(data.terminalSnapshot || "");
   renderSupervisorActionLog(Array.isArray(data.actionLog) ? data.actionLog : []);
   renderApprovals(Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []);
+  renderMentorResponse(data.mentor || {});
 
   if (data.pendingApprovals?.length) {
     setSupervisorStatus("Awaiting approval", "busy");
@@ -633,6 +678,7 @@ async function refreshSupervisorHealth() {
     setTerminalSnapshot(data.terminal?.output || "");
     renderSupervisorActionLog([]);
     renderApprovals([]);
+    renderMentorResponse({});
     setSupervisorFeedback("Supervisor loaded. Start or verify Claude when you want the backend to take over.");
     if (data.terminal?.session_exists) {
       setSupervisorStatus(data.terminal.ready ? "Claude ready" : "Claude busy", data.terminal.ready ? "live" : "busy");
@@ -751,6 +797,92 @@ async function handleApprovalDecision(callId, approve) {
   }
 }
 
+function mentorGoal() {
+  return mentorGoalInput.value.trim();
+}
+
+async function explainLatestChanges() {
+  setSupervisorStatus("Mentor working", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/explain-latest");
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("mentor_explain_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function requestSecondOpinion() {
+  const goal = mentorGoal();
+  if (!goal) {
+    setSupervisorFeedback("Add a short goal or concern first so the mentor knows what to evaluate.");
+    return;
+  }
+
+  setSupervisorStatus("Mentor reviewing", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/second-opinion", {
+      goal
+    });
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("mentor_second_opinion_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function draftClaudePrompt() {
+  const goal = mentorGoal();
+  if (!goal) {
+    setSupervisorFeedback("Add a short goal first so the mentor can draft a useful Claude prompt.");
+    return;
+  }
+
+  setSupervisorStatus("Mentor drafting", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/draft-claude-prompt", {
+      goal
+    });
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("mentor_draft_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function explainPendingApproval() {
+  const pending = latestPendingApprovals[0];
+  if (!pending?.callId) {
+    setSupervisorFeedback("There is no pending approval to explain right now.");
+    return;
+  }
+
+  setSupervisorStatus("Mentor explaining", "busy");
+  try {
+    const data = await callSupervisor("/api/supervisor/explain-approval", {
+      callId: pending.callId
+    });
+    applySupervisorResponse(data);
+  } catch (error) {
+    setSupervisorStatus("Supervisor error", "error");
+    setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    addEvent("mentor_approval_explain_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
+function useMentorDraft() {
+  if (!latestMentorDraft) {
+    setSupervisorFeedback("There is no drafted Claude prompt to use yet.");
+    return;
+  }
+
+  supervisorPromptInput.value = latestMentorDraft;
+  setSupervisorFeedback("Moved the drafted mentor prompt into the Claude draft box.");
+}
+
 presetSelect.addEventListener("change", () => {
   renderPresetSummary();
   markPromptDirty();
@@ -775,6 +907,11 @@ supervisorClearDraftButton.addEventListener("click", () => {
   supervisorPromptInput.value = "";
   setSupervisorFeedback("Cleared the manual Claude prompt draft.");
 });
+mentorExplainButton.addEventListener("click", explainLatestChanges);
+mentorSecondOpinionButton.addEventListener("click", requestSecondOpinion);
+mentorDraftPromptButton.addEventListener("click", draftClaudePrompt);
+mentorExplainApprovalButton.addEventListener("click", explainPendingApproval);
+mentorUseDraftButton.addEventListener("click", useMentorDraft);
 approvalList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
@@ -806,4 +943,5 @@ loadPromptConfig()
   });
 renderSupervisorActionLog([]);
 renderApprovals([]);
+renderMentorResponse({});
 refreshSupervisorHealth();

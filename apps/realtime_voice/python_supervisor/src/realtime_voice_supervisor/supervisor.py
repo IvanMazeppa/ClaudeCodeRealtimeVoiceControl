@@ -182,6 +182,7 @@ class SupervisorService:
             session_id,
             user_text,
             trace_name="realtime-voice-supervisor",
+            update_approval_state=True,
         )
 
     async def explain_latest_changes(self, session_id: str) -> dict[str, Any]:
@@ -231,7 +232,7 @@ class SupervisorService:
                 "error": "No matching pending approval was found for explanation.",
             }
 
-        return await self._run_agent(
+        result = await self._run_agent(
             self.approval_explainer_agent,
             session_id,
             (
@@ -243,6 +244,13 @@ class SupervisorService:
             ),
             trace_name="realtime-voice-mentor",
         )
+
+        terminal = await self.harness.get_terminal_state(self.harness.load_config())
+        result["terminalSnapshot"] = terminal.get("output", "")
+        result["terminalReady"] = bool(terminal.get("ready"))
+        result["claudeSessionExists"] = bool(terminal.get("session_exists"))
+        result["pendingApprovals"] = await self._load_pending_approvals(session_id)
+        return result
 
     async def resolve_approval(
         self,
@@ -285,7 +293,11 @@ class SupervisorService:
                 session=session,
             )
 
-        return await self._build_result_payload(result, session_id)
+        return await self._build_result_payload(
+            result,
+            session_id,
+            update_approval_state=True,
+        )
 
     async def _run_agent(
         self,
@@ -294,6 +306,7 @@ class SupervisorService:
         user_text: str,
         *,
         trace_name: str,
+        update_approval_state: bool = False,
     ) -> dict[str, Any]:
         session = SQLiteSession(session_id, str(self.session_db_path))
         context = _default_context(session_id)
@@ -306,18 +319,34 @@ class SupervisorService:
                 context=context,
             )
 
-        return await self._build_result_payload(result, session_id)
+        return await self._build_result_payload(
+            result,
+            session_id,
+            update_approval_state=update_approval_state,
+        )
 
-    async def _build_result_payload(self, result: Any, session_id: str) -> dict[str, Any]:
+    async def _build_result_payload(
+        self,
+        result: Any,
+        session_id: str,
+        *,
+        update_approval_state: bool = False,
+    ) -> dict[str, Any]:
         state = result.to_state()
         serialized = state.to_json()
         context = serialized.get("context", {}).get("context", {}) or {}
         interruptions = state.get_interruptions()
 
-        if interruptions:
-            self._state_path(session_id).write_text(state.to_string(), encoding="utf-8")
+        if update_approval_state:
+            if interruptions:
+                self._state_path(session_id).write_text(state.to_string(), encoding="utf-8")
+            else:
+                self._state_path(session_id).unlink(missing_ok=True)
+
+        if update_approval_state:
+            pending_approvals = [self._serialize_interruption(item) for item in interruptions]
         else:
-            self._state_path(session_id).unlink(missing_ok=True)
+            pending_approvals = await self._load_pending_approvals(session_id)
 
         spoken_response, mentor_payload = self._mentor_payload_from_output(result.final_output)
         if interruptions and not spoken_response:
@@ -331,7 +360,7 @@ class SupervisorService:
             "terminalReady": bool(context.get("terminal_ready")),
             "claudeSessionExists": bool(context.get("claude_session_exists")),
             "actionLog": list(context.get("action_log", [])),
-            "pendingApprovals": [self._serialize_interruption(item) for item in interruptions],
+            "pendingApprovals": pending_approvals,
             "mentor": mentor_payload,
         }
 
@@ -358,6 +387,17 @@ class SupervisorService:
         if len(interruptions) == 1:
             return self._serialize_interruption(interruptions[0])
         return None
+
+    async def _load_pending_approvals(self, session_id: str) -> list[dict[str, Any]]:
+        state_path = self._state_path(session_id)
+        if not state_path.exists():
+            return []
+
+        state = await RunState.from_string(
+            self.voice_supervisor_agent,
+            state_path.read_text(encoding="utf-8"),
+        )
+        return [self._serialize_interruption(item) for item in state.get_interruptions()]
 
     def _mentor_payload_from_output(self, final_output: Any) -> tuple[str, dict[str, Any]]:
         empty = {

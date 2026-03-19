@@ -491,6 +491,48 @@ select:focus {
   max-height: 360px;
 }
 
+.mentor-panel {
+  margin-top: 18px;
+}
+
+.mentor-textarea {
+  min-height: 110px;
+}
+
+.mentor-buttons {
+  margin-top: 4px;
+}
+
+.mentor-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.mentor-card {
+  margin-top: 18px;
+}
+
+.mentor-summary {
+  margin: 0;
+  color: #f4ede3;
+  line-height: 1.7;
+}
+
+.mentor-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #ddd4c8;
+  line-height: 1.7;
+}
+
+.mentor-list li + li {
+  margin-top: 8px;
+}
+
+.mentor-draft-output {
+  min-height: 120px;
+}
+
 @keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 currentColor;
@@ -510,6 +552,10 @@ select:focus {
   }
 
   .supervisor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mentor-grid {
     grid-template-columns: 1fr;
   }
 

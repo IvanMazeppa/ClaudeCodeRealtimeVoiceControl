@@ -246,6 +246,94 @@
           </div>
           <pre id="supervisor-feedback" class="claude-output">Connect the Realtime session, then use the Python supervisor to work with Claude Code through the browser.</pre>
         </article>
+
+        <section class="bridge-output mentor-panel">
+          <div class="panel-header bridge-output-header">
+            <div>
+              <p class="panel-kicker">Mentor</p>
+              <h3>Explain changes, critique direction, and draft better prompts</h3>
+            </div>
+          </div>
+
+          <label class="control bridge-prompt">
+            <span>Mentor goal or question</span>
+            <textarea
+              id="mentor-goal-input"
+              class="prompt-textarea bridge-textarea mentor-textarea"
+              placeholder="Ask for a second opinion, request a better Claude prompt, or describe what you want explained."
+            ></textarea>
+          </label>
+
+          <div class="button-row bridge-buttons mentor-buttons">
+            <button id="mentor-explain-btn" class="button" type="button">Explain latest changes</button>
+            <button id="mentor-second-opinion-btn" class="button primary" type="button">Second opinion</button>
+            <button id="mentor-draft-prompt-btn" class="button" type="button">Draft prompt for Claude</button>
+            <button id="mentor-explain-approval-btn" class="button" type="button">Explain approval</button>
+            <button id="mentor-use-draft-btn" class="button" type="button" disabled>Use drafted prompt</button>
+          </div>
+
+          <div class="controls-grid mentor-grid">
+            <article class="bridge-output mentor-card">
+              <div class="panel-header bridge-output-header">
+                <div>
+                  <p class="panel-kicker">Mentor Summary</p>
+                  <h3>Screen summary</h3>
+                </div>
+              </div>
+              <p id="mentor-summary" class="mentor-summary">
+                Mentor results will appear here once you run one of the mentor actions.
+              </p>
+            </article>
+
+            <article class="bridge-output mentor-card">
+              <div class="panel-header bridge-output-header">
+                <div>
+                  <p class="panel-kicker">Mentor Bullets</p>
+                  <h3>Key observations</h3>
+                </div>
+              </div>
+              <ul id="mentor-bullets" class="mentor-list">
+                <li>No mentor detail yet.</li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="controls-grid mentor-grid">
+            <article class="bridge-output mentor-card">
+              <div class="panel-header bridge-output-header">
+                <div>
+                  <p class="panel-kicker">Risks</p>
+                  <h3>What to watch</h3>
+                </div>
+              </div>
+              <ul id="mentor-risks" class="mentor-list">
+                <li>No risks highlighted yet.</li>
+              </ul>
+            </article>
+
+            <article class="bridge-output mentor-card">
+              <div class="panel-header bridge-output-header">
+                <div>
+                  <p class="panel-kicker">Changed Files</p>
+                  <h3>Files the mentor called out</h3>
+                </div>
+              </div>
+              <ul id="mentor-files" class="mentor-list">
+                <li>No files highlighted yet.</li>
+              </ul>
+            </article>
+          </div>
+
+          <article class="bridge-output">
+            <div class="panel-header bridge-output-header">
+              <div>
+                <p class="panel-kicker">Drafted Prompt</p>
+                <h3>Reusable Claude prompt</h3>
+              </div>
+            </div>
+            <pre id="mentor-draft-output" class="claude-output mentor-draft-output">No drafted Claude prompt yet.</pre>
+          </article>
+        </section>
       </section>
     </main>
 
