@@ -75,6 +75,7 @@ That responsibility now lives in a Python supervisor that uses the OpenAI Agents
 - persistent sessions across turns
 - traceable agent runs
 - a specialized Claude terminal agent exposed as a tool
+- a read-only mentor specialist for explanations and review
 - approval-gated terminal actions
 - resumable run state for pending approvals
 
@@ -86,6 +87,53 @@ tool set is:
 - `is_ready`
 - `send_prompt`
 - `interrupt_run`
+
+## Mentor Layer
+
+The browser now includes a separate Mentor panel that talks to the Python supervisor through
+the Node bridge.
+
+The current mentor actions are:
+
+- explain latest changes
+- second opinion
+- draft a Claude prompt
+- explain a pending approval
+
+The mentor path is intentionally read-only:
+
+- it can inspect git state
+- it can read repo files
+- it can inspect Claude terminal state
+- it can inspect pending approval arguments
+- it cannot write files or run arbitrary shell commands
+
+This keeps the mentor useful as a coding buddy without letting it silently take over the
+workspace.
+
+## Browser To Supervisor Endpoints
+
+The browser calls these local bridge endpoints for supervisor and mentor actions:
+
+- `GET /api/supervisor/health`
+- `POST /api/supervisor/session`
+- `POST /api/supervisor/observe`
+- `POST /api/supervisor/turn`
+- `POST /api/supervisor/manual-prompt`
+- `POST /api/supervisor/interrupt`
+- `POST /api/supervisor/decision`
+- `POST /api/supervisor/explain-latest`
+- `POST /api/supervisor/second-opinion`
+- `POST /api/supervisor/draft-claude-prompt`
+- `POST /api/supervisor/explain-approval`
+
+The browser remains thin. It owns:
+
+- local UI state
+- rendering mentor cards and approval controls
+- storing drafted prompt text locally until the user chooses to send it
+
+The Python supervisor owns the reasoning contract for what the mentor says.
 
 ## Computer-Use Fallback
 

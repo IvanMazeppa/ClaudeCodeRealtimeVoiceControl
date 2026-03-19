@@ -205,9 +205,9 @@ Important constraint from the user:
 
 - do not edit the plan file itself
 
-## What Has Been Implemented In The Current Session
+## What Has Been Implemented In Recent Sessions
 
-The following implementation work was started and partially completed in this session.
+The following implementation work has now been completed or materially advanced.
 
 ### 1. Realtime Model Upgrade
 
@@ -305,6 +305,10 @@ The current UI direction includes:
 - approve or reject actions
 - see supervisor action logs
 - see a live terminal snapshot
+- explain latest changes
+- ask for a second opinion on Claude's current direction
+- draft a stronger Claude prompt through the mentor panel
+- explain why a pending approval was flagged
 
 ### 7. Node-to-Python Bridge Endpoints
 
@@ -318,6 +322,58 @@ supervisor:
 - `POST /api/supervisor/manual-prompt`
 - `POST /api/supervisor/interrupt`
 - `POST /api/supervisor/decision`
+- `POST /api/supervisor/explain-latest`
+- `POST /api/supervisor/second-opinion`
+- `POST /api/supervisor/draft-claude-prompt`
+- `POST /api/supervisor/explain-approval`
+
+### 10. Mentor v1 Backend
+
+Mentor v1 has now been added to the Python supervisor as a read-only specialist.
+
+Key files:
+
+- `apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/models.py`
+- `apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/prompts.py`
+- `apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/repo_tools.py`
+- `apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/git_tools.py`
+- `apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/mentor.py`
+
+The mentor currently supports:
+
+- explain latest changes
+- second opinion
+- draft Claude prompt
+- explain approval
+
+Important boundary:
+
+- mentor tooling is read-only
+- mentor can inspect git state, repo files, Claude terminal state, and pending approvals
+- mentor does not perform repo writes directly
+
+### 11. Mentor v1 Browser UI
+
+The browser UI and Node bridge now expose Mentor v1 directly.
+
+Changed files:
+
+- `apps/realtime_voice/public/index.html`
+- `apps/realtime_voice/public/app.js`
+- `apps/realtime_voice/public/styles.css`
+- `apps/realtime_voice/server.mjs`
+
+The Mentor panel now includes:
+
+- a goal input
+- `Explain latest changes`
+- `Second opinion`
+- `Draft prompt for Claude`
+- `Explain approval`
+- on-screen summary, bullets, risks, changed files, and drafted prompt output
+
+The drafted prompt can be pushed into the existing supervisor draft box and then sent
+through the normal approval-aware Claude flow.
 
 ### 8. Startup / Verification Script Changes
 
@@ -345,31 +401,41 @@ This distinction matters a lot for the next environment.
 
 ### Completed Validation
 
-These checks were run successfully in the current session:
+These checks were run successfully:
 
 - `node --check apps/realtime_voice/server.mjs`
 - `node --check apps/realtime_voice/public/app.js`
 - `python3 -m py_compile` against the new Python supervisor modules
-- lint check on the modified files returned no IDE lints
+- `bash scripts/verify_realtime_voice.sh`
+- local mixed-stack startup through `scripts/start_realtime_voice.sh`
+- `/health` and `/api/supervisor/health`
+- mentor endpoint smoke checks for:
+  - `explain-latest`
+  - `second-opinion`
+  - `draft-claude-prompt`
+  - `explain-approval`
+- one real Claude tmux attach/send flow
+- one approval flow
+- one interrupt flow
+
+An important integration fix was also made after runtime testing:
+
+- mentor explanation flows now preserve pending approvals instead of accidentally clearing
+  them
 
 ### Not Yet Fully Verified End To End
 
 The following still need explicit runtime verification:
 
-- supervisor dependency installation through `scripts/start_realtime_voice.sh`
-- successful launch of the new Node + Python mixed stack
-- real browser connection using `gpt-realtime-1.5`
-- one approved prompt-send flow against a real Claude terminal
-- one rejected prompt-send flow
-- one interrupt flow
-- correctness of readiness detection against real Claude terminal output
-- browser rendering of approval items and action logs in real usage
+- real browser microphone/WebRTC connection using `gpt-realtime-1.5` in a live browser session
+- browser rendering of Mentor panel actions in real click-through usage after cold start
+- correctness of readiness detection against a broader range of real Claude terminal states
 
 So the current implementation is best described as:
 
 - architecturally substantial
-- syntactically validated
-- not yet fully runtime-verified in this final mixed-stack form
+- runtime-validated for the local supervisor and Claude terminal flows
+- still awaiting a final browser-driven smoke pass for the live mic/WebRTC path
 
 ## Important Constraints And Cautions
 
@@ -439,7 +505,8 @@ The next assistant should probably do the following in order:
 10. test a real Claude tmux session attach/start flow
 11. test approval pause/resume for a risky prompt
 12. test interrupt behavior
-13. tighten docs to match any runtime or architecture changes discovered during validation
+13. verify the browser mic/WebRTC flow after any machine reboot or environment change
+14. tighten docs to match any runtime or architecture changes discovered during validation
 
 ## Known Likely Follow-Up Issues
 
@@ -449,7 +516,7 @@ These are the most likely places for problems when the next environment resumes:
 - exact Agents SDK runtime API differences from the researched examples
 - `RunState` serialization/resume edge cases
 - tmux prompt-ready detection being too naive
-- browser UI assumptions about the shape of approval payloads
+- browser UI assumptions about the shape of mentor and approval payloads
 - Node-to-Python subprocess JSON bridging details
 - the Claude terminal's actual visible prompt markers differing from the current readiness heuristic
 
@@ -500,7 +567,8 @@ Implementation work has already started in:
 - `scripts/start_realtime_voice.sh`
 - `scripts/verify_realtime_voice.sh`
 
-The current implementation is syntax-checked but not fully runtime-verified end to end.
+The current implementation is runtime-validated for local supervisor and Claude terminal
+flows, but still needs a final live browser mic/WebRTC smoke pass.
 
 Before making further architectural changes:
 1. inspect git state

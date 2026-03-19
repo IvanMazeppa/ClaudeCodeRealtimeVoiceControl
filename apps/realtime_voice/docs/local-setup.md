@@ -55,6 +55,11 @@ From the repository root:
 9. Send the last heard turn or a manual draft to Claude Code from the browser
 10. Review approvals when the supervisor flags risky terminal actions
 11. Use `Read Claude state` when you want a fresh terminal capture and short spoken summary
+12. Use the Mentor panel for read-only help:
+    - `Explain latest changes`
+    - `Second opinion`
+    - `Draft prompt for Claude`
+    - `Explain approval`
 
 ## Security Boundary
 

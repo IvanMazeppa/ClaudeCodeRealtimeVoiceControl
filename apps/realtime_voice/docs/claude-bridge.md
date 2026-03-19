@@ -22,13 +22,26 @@ The supervisor flow uses:
 
 ## Main Workflow
 
-The browser panel is built around five primary actions:
+The browser surface now has two layers:
+
+- supervisor actions for direct Claude session control
+- mentor actions for explanation, review, and prompt drafting
+
+The supervisor controls cover:
 
 - start or verify the Claude session
 - send the last heard spoken turn directly to Claude Code
 - optionally edit and send a manual prompt draft
 - read the current Claude terminal state
+- interrupt Claude
 - approve or reject risky terminal actions
+
+The mentor controls cover:
+
+- explain latest changes
+- give a second opinion on Claude's current direction
+- draft a better prompt for Claude
+- explain a pending approval before the user approves or rejects it
 
 ## Default Config
 
@@ -57,6 +70,26 @@ The Python supervisor exposes a narrow Claude terminal tool surface:
 - `interrupt_run`
 
 Riskier prompt sends are approval-gated before the tool executes.
+
+## Mentor Boundary
+
+The mentor is intentionally not another terminal executor.
+
+It is allowed to:
+
+- inspect repo and git state
+- inspect Claude terminal output
+- inspect pending approval metadata
+- draft better prompts for the user to send
+
+It is not allowed to:
+
+- write to the repo directly
+- run arbitrary shell commands
+- bypass approval when Claude prompt sends are risky
+
+This split matters. Claude Code remains the actor that performs coding work. The mentor is a
+read-only reviewer and explainer layered on top of that flow.
 
 ## Why This Shift
 

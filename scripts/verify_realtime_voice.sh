@@ -54,6 +54,13 @@ else
     exit 1
 fi
 
+if [ -f "${APP_DIR}/public/app.js" ]; then
+    printf '[pass] browser app exists\n'
+else
+    printf '[fail] missing %s/public/app.js\n' "${APP_DIR}" >&2
+    exit 1
+fi
+
 if [ -f "${SUPERVISOR_DIR}/pyproject.toml" ]; then
     printf '[pass] Python supervisor manifest exists\n'
 else
@@ -74,6 +81,34 @@ do
         printf '[pass] supervisor source exists: %s\n' "${required_file#${REPO_ROOT}/}"
     else
         printf '[fail] missing %s\n' "${required_file}" >&2
+        exit 1
+    fi
+done
+
+for mentor_route in \
+    "/api/supervisor/explain-latest" \
+    "/api/supervisor/second-opinion" \
+    "/api/supervisor/draft-claude-prompt" \
+    "/api/supervisor/explain-approval"
+do
+    if rg -Fq "app.post(\"${mentor_route}\"" "${APP_DIR}/server.mjs"; then
+        printf '[pass] mentor endpoint exists in server.mjs: %s\n' "${mentor_route}"
+    else
+        printf '[fail] missing mentor endpoint in server.mjs: %s\n' "${mentor_route}" >&2
+        exit 1
+    fi
+done
+
+for mentor_command in \
+    "explain-latest" \
+    "second-opinion" \
+    "draft-claude-prompt" \
+    "explain-approval"
+do
+    if rg -Fq "\"${mentor_command}\"" "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/cli.py"; then
+        printf '[pass] mentor CLI command exists: %s\n' "${mentor_command}"
+    else
+        printf '[fail] missing mentor CLI command: %s\n' "${mentor_command}" >&2
         exit 1
     fi
 done
@@ -105,6 +140,27 @@ from realtime_voice_supervisor.supervisor import SupervisorService
     fi
 else
     printf '[warn] Python supervisor virtual environment is missing; run scripts/start_realtime_voice.sh once to create it\n'
+fi
+
+if node --check "${APP_DIR}/server.mjs" >/dev/null 2>&1; then
+    printf '[pass] server.mjs passed node --check\n'
+else
+    printf '[fail] server.mjs has a syntax error\n' >&2
+    exit 1
+fi
+
+if node --check "${APP_DIR}/public/app.js" >/dev/null 2>&1; then
+    printf '[pass] public/app.js passed node --check\n'
+else
+    printf '[fail] public/app.js has a syntax error\n' >&2
+    exit 1
+fi
+
+if python3 -m py_compile "${SUPERVISOR_DIR}"/src/realtime_voice_supervisor/*.py >/dev/null 2>&1; then
+    printf '[pass] supervisor package passed py_compile\n'
+else
+    printf '[fail] supervisor package failed py_compile\n' >&2
+    exit 1
 fi
 
 printf 'realtime-voice-files-ok\n'

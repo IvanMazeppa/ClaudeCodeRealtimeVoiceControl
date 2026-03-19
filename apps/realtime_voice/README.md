@@ -34,6 +34,26 @@ The local Python supervisor owns:
 - the tmux-backed Claude terminal harness
 - approval-gated terminal actions
 - action logs and readable Claude terminal snapshots
+- read-only mentor workflows for repo explanations, second opinions, prompt drafting, and approval explanations
+
+## Mentor v1
+
+`Mentor v1` is the first assistant layer on top of the Python supervisor.
+
+It currently does these things:
+
+- explain the latest repo changes with git-aware summaries
+- give a second opinion on Claude Code's current direction
+- draft a stronger follow-up prompt for Claude
+- explain why a pending approval was flagged
+- keep detailed reasoning on screen while staying brief enough for spoken summaries
+
+It does not do these things:
+
+- write to the repo directly
+- bypass the existing approval gate for risky Claude actions
+- replace Claude Code as the main coding executor
+- default to computer-use control
 
 ## Why Browser-First
 
@@ -65,7 +85,9 @@ processes between the two lanes.
 7. Click `Save prompt` if you want those custom instructions persisted locally.
 8. Click `Connect` and allow microphone access in the browser.
 9. Use the Python Supervisor panel to start or verify the Claude session, send the last
-    heard turn, review approval prompts, and read the captured Claude terminal snapshot.
+   heard turn, review approval prompts, and read the captured Claude terminal snapshot.
+10. Use the Mentor panel to explain recent changes, ask for a second opinion, draft a
+    better Claude prompt, or inspect a pending approval before deciding.
 
 ## Canonical Realtime Docs
 
