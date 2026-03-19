@@ -31,6 +31,10 @@ async def _run() -> int:
             "manual-prompt",
             "interrupt",
             "decision",
+            "explain-latest",
+            "second-opinion",
+            "draft-claude-prompt",
+            "explain-approval",
         ],
     )
     parser.add_argument(
@@ -73,6 +77,23 @@ async def _run() -> int:
         )
     elif args.command == "interrupt":
         result = await service.interrupt_claude(str(payload.get("sessionId") or "default"))
+    elif args.command == "explain-latest":
+        result = await service.explain_latest_changes(str(payload.get("sessionId") or "default"))
+    elif args.command == "second-opinion":
+        result = await service.second_opinion(
+            str(payload.get("sessionId") or "default"),
+            str(payload.get("goal") or payload.get("userText") or ""),
+        )
+    elif args.command == "draft-claude-prompt":
+        result = await service.draft_claude_prompt(
+            str(payload.get("sessionId") or "default"),
+            str(payload.get("goal") or payload.get("userText") or ""),
+        )
+    elif args.command == "explain-approval":
+        result = await service.explain_approval(
+            str(payload.get("sessionId") or "default"),
+            str(payload.get("callId") or ""),
+        )
     else:
         result = await service.resolve_approval(
             str(payload.get("sessionId") or "default"),

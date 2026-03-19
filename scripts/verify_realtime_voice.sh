@@ -61,6 +61,23 @@ else
     exit 1
 fi
 
+for required_file in \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/cli.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/supervisor.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/models.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/prompts.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/repo_tools.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/git_tools.py" \
+    "${SUPERVISOR_DIR}/src/realtime_voice_supervisor/mentor.py"
+do
+    if [ -f "${required_file}" ]; then
+        printf '[pass] supervisor source exists: %s\n' "${required_file#${REPO_ROOT}/}"
+    else
+        printf '[fail] missing %s\n' "${required_file}" >&2
+        exit 1
+    fi
+done
+
 if [ -f "${APP_DIR}/config/claude-bridge.json" ]; then
     printf '[pass] Claude bridge config exists\n'
 else
@@ -77,7 +94,11 @@ else
 fi
 
 if [ -x "${SUPERVISOR_PYTHON}" ]; then
-    if "${SUPERVISOR_PYTHON}" -c 'import realtime_voice_supervisor, agents' >/dev/null 2>&1; then
+    if "${SUPERVISOR_PYTHON}" -c '
+import realtime_voice_supervisor, agents
+from realtime_voice_supervisor.mentor import build_change_explainer_agent
+from realtime_voice_supervisor.supervisor import SupervisorService
+' >/dev/null 2>&1; then
         printf '[pass] Python supervisor virtual environment is ready\n'
     else
         printf '[warn] Python supervisor virtual environment exists but imports failed\n'

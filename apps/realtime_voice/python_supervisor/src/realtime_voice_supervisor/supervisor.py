@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -8,8 +7,16 @@ from typing import Any
 
 from agents import Agent, Runner, RunState, SQLiteSession, function_tool, trace
 from agents.run_context import RunContextWrapper
+from pydantic import BaseModel
 
-from .harness import ClaudeBridgeConfig, ClaudeTerminalHarness
+from .harness import ClaudeTerminalHarness
+from .mentor import (
+    build_approval_explainer_agent,
+    build_change_explainer_agent,
+    build_mentor_agent,
+    build_prompt_drafter_agent,
+    build_second_opinion_agent,
+)
 
 
 RISKY_PROMPT_MARKERS = (
@@ -60,6 +67,12 @@ def _default_context(session_id: str) -> dict[str, Any]:
         "terminal_snapshot": "",
         "terminal_ready": False,
         "claude_session_exists": False,
+        "latest_git_branch": "",
+        "latest_git_status": "",
+        "latest_git_diff_summary": "",
+        "latest_repo_search": "",
+        "last_mentor_mode": "",
+        "last_mentor_summary": "",
     }
 
 
@@ -75,6 +88,27 @@ class SupervisorService:
         self.bridge_config_path = app_root / "config" / "claude-bridge.json"
         self.harness = ClaudeTerminalHarness(repo_root=repo_root, config_path=self.bridge_config_path)
         self.supervisor_model = os.environ.get("REALTIME_SUPERVISOR_MODEL", "gpt-5.4")
+        self.mentor_agent = build_mentor_agent(self.supervisor_model, self.repo_root, self.harness)
+        self.change_explainer_agent = build_change_explainer_agent(
+            self.supervisor_model,
+            self.repo_root,
+            self.harness,
+        )
+        self.second_opinion_agent = build_second_opinion_agent(
+            self.supervisor_model,
+            self.repo_root,
+            self.harness,
+        )
+        self.prompt_drafter_agent = build_prompt_drafter_agent(
+            self.supervisor_model,
+            self.repo_root,
+            self.harness,
+        )
+        self.approval_explainer_agent = build_approval_explainer_agent(
+            self.supervisor_model,
+            self.repo_root,
+            self.harness,
+        )
         self.voice_supervisor_agent = self._build_agent_graph()
 
     async def health(self) -> dict[str, Any]:
@@ -143,18 +177,72 @@ class SupervisorService:
         )
 
     async def handle_turn(self, session_id: str, user_text: str) -> dict[str, Any]:
-        session = SQLiteSession(session_id, str(self.session_db_path))
-        context = _default_context(session_id)
+        return await self._run_agent(
+            self.voice_supervisor_agent,
+            session_id,
+            user_text,
+            trace_name="realtime-voice-supervisor",
+        )
 
-        with trace("realtime-voice-supervisor", group_id=session_id):
-            result = await Runner.run(
-                self.voice_supervisor_agent,
-                user_text,
-                session=session,
-                context=context,
-            )
+    async def explain_latest_changes(self, session_id: str) -> dict[str, Any]:
+        return await self._run_agent(
+            self.change_explainer_agent,
+            session_id,
+            (
+                "Explain the latest repository changes for the user. "
+                "Always call git_current_branch, git_status_summary, and git_diff_summary first. "
+                "Read files only when needed to clarify intent. "
+                "Keep the spoken response to one or two short sentences."
+            ),
+            trace_name="realtime-voice-mentor",
+        )
 
-        return await self._build_result_payload(result, session_id)
+    async def second_opinion(self, session_id: str, goal: str) -> dict[str, Any]:
+        return await self._run_agent(
+            self.second_opinion_agent,
+            session_id,
+            (
+                "Give a second opinion on Claude Code's current direction. "
+                "Start by capturing Claude terminal state. "
+                "Use git status and diff context when relevant.\n\n"
+                f"User goal or concern:\n{goal.strip() or 'Please review the current direction.'}"
+            ),
+            trace_name="realtime-voice-mentor",
+        )
+
+    async def draft_claude_prompt(self, session_id: str, goal: str) -> dict[str, Any]:
+        return await self._run_agent(
+            self.prompt_drafter_agent,
+            session_id,
+            (
+                "Draft a strong prompt for Claude Code based on the user's goal. "
+                "Capture Claude terminal state first when it is relevant. "
+                "Use repo context only when it materially improves the prompt.\n\n"
+                f"User goal:\n{goal.strip() or 'Help me continue the current task.'}"
+            ),
+            trace_name="realtime-voice-mentor",
+        )
+
+    async def explain_approval(self, session_id: str, call_id: str) -> dict[str, Any]:
+        pending = await self._load_pending_approval(session_id, call_id)
+        if not pending:
+            return {
+                "ok": False,
+                "error": "No matching pending approval was found for explanation.",
+            }
+
+        return await self._run_agent(
+            self.approval_explainer_agent,
+            session_id,
+            (
+                "Explain this pending supervisor approval for the user.\n\n"
+                f"Tool name: {pending['toolName']}\n"
+                f"Arguments: {pending['arguments']}\n"
+                "Explain why it was likely flagged, what it is likely to do, and whether approval or "
+                "rejection is safer."
+            ),
+            trace_name="realtime-voice-mentor",
+        )
 
     async def resolve_approval(
         self,
@@ -199,6 +287,27 @@ class SupervisorService:
 
         return await self._build_result_payload(result, session_id)
 
+    async def _run_agent(
+        self,
+        agent: Agent[dict[str, Any]],
+        session_id: str,
+        user_text: str,
+        *,
+        trace_name: str,
+    ) -> dict[str, Any]:
+        session = SQLiteSession(session_id, str(self.session_db_path))
+        context = _default_context(session_id)
+
+        with trace(trace_name, group_id=session_id):
+            result = await Runner.run(
+                agent,
+                user_text,
+                session=session,
+                context=context,
+            )
+
+        return await self._build_result_payload(result, session_id)
+
     async def _build_result_payload(self, result: Any, session_id: str) -> dict[str, Any]:
         state = result.to_state()
         serialized = state.to_json()
@@ -210,7 +319,7 @@ class SupervisorService:
         else:
             self._state_path(session_id).unlink(missing_ok=True)
 
-        spoken_response = str(result.final_output or "").strip()
+        spoken_response, mentor_payload = self._mentor_payload_from_output(result.final_output)
         if interruptions and not spoken_response:
             spoken_response = "Approval is required before I can continue working with Claude."
 
@@ -223,6 +332,7 @@ class SupervisorService:
             "claudeSessionExists": bool(context.get("claude_session_exists")),
             "actionLog": list(context.get("action_log", [])),
             "pendingApprovals": [self._serialize_interruption(item) for item in interruptions],
+            "mentor": mentor_payload,
         }
 
     def _serialize_interruption(self, item: Any) -> dict[str, Any]:
@@ -231,6 +341,53 @@ class SupervisorService:
             "toolName": _tool_name(item),
             "arguments": getattr(item, "arguments", None),
         }
+
+    async def _load_pending_approval(self, session_id: str, call_id: str) -> dict[str, Any] | None:
+        state_path = self._state_path(session_id)
+        if not state_path.exists():
+            return None
+
+        state = await RunState.from_string(
+            self.voice_supervisor_agent,
+            state_path.read_text(encoding="utf-8"),
+        )
+        interruptions = state.get_interruptions()
+        if call_id:
+            match = next((item for item in interruptions if _tool_call_id(item) == call_id), None)
+            return self._serialize_interruption(match) if match else None
+        if len(interruptions) == 1:
+            return self._serialize_interruption(interruptions[0])
+        return None
+
+    def _mentor_payload_from_output(self, final_output: Any) -> tuple[str, dict[str, Any]]:
+        empty = {
+            "screenSummary": "",
+            "bullets": [],
+            "risks": [],
+            "recommendedNextStep": None,
+            "changedFiles": [],
+            "verdict": None,
+            "draftedFollowUpPrompt": None,
+            "draftedPrompt": None,
+            "approvalRecommendation": None,
+            "approvalReason": None,
+        }
+        if isinstance(final_output, BaseModel):
+            data = final_output.model_dump()
+            spoken_response = str(data.pop("spoken_response", "")).strip()
+            return spoken_response, {
+                "screenSummary": data.get("screen_summary", ""),
+                "bullets": list(data.get("bullets") or []),
+                "risks": list(data.get("risks") or []),
+                "recommendedNextStep": data.get("recommended_next_step"),
+                "changedFiles": list(data.get("changed_files") or []),
+                "verdict": data.get("verdict"),
+                "draftedFollowUpPrompt": data.get("drafted_follow_up_prompt"),
+                "draftedPrompt": data.get("drafted_prompt"),
+                "approvalRecommendation": data.get("approval_recommendation"),
+                "approvalReason": data.get("approval_reason"),
+            }
+        return str(final_output or "").strip(), empty
 
     def _state_path(self, session_id: str) -> Path:
         safe_session = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in session_id)
@@ -331,14 +488,19 @@ class SupervisorService:
                 "You are the backend supervisor for a voice-driven Claude Code workflow. "
                 "Help the user interact with Claude Code in a hands-free, low-friction way. "
                 "Use the Claude terminal specialist whenever the request involves Claude Code state, sending work, or interrupting a run. "
-                "If a request does not require terminal interaction, answer directly and briefly. "
+                "Use the mentor specialist whenever the user wants explanations, repo summaries, or a second opinion. "
+                "If a request does not require a specialist, answer directly and briefly. "
                 "Keep spoken-style responses short, calm, and actionable."
             ),
             tools=[
                 claude_terminal_agent.as_tool(
                     tool_name="work_with_claude_terminal",
                     tool_description="Read, summarize, interrupt, or send prompts to the Claude Code terminal.",
-                )
+                ),
+                self.mentor_agent.as_tool(
+                    tool_name="work_with_mentor",
+                    tool_description="Explain repo changes, summarize Claude state, and provide second-opinion guidance.",
+                ),
             ],
         )
 
