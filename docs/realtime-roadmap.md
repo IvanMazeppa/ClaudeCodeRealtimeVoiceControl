@@ -1,56 +1,201 @@
 # Realtime Roadmap
 
-## Why This Track Exists
+## North Star
 
-The realtime track exists to preserve a separate research lane for future low-latency voice experiments that may require different transport, session, and runtime assumptions than the stable Claude Code integration lane.
+Build a browser-first voice coding workbench where the user can talk to a persistent
+supervisor that feels like an active collaborator, not a stateless assistant.
 
-Keeping that work separate prevents speculative architecture from leaking into the reproducible workflow under `apps/claude_code_voice/`.
+The target experience is:
+
+- low-latency voice in the browser
+- a two-lane memory model with one shared Claude/project lane plus separate character-profile conversations
+- live visibility into Claude's terminal work
+- targeted use of hosted tools such as web search when fresh information is needed
+- controlled access to project files and safe execution paths
+- optional computer-use fallback for visual workflows that cannot be covered by structured state and terminal capture alone
+
+This is a research lane for a new interaction model, not a replacement for the stable Claude
+Code lane today.
+
+## Product Direction
+
+The realtime app is no longer just a voice transport experiment.
+
+It is now explicitly a local-first coding companion research track centered on three roles the
+same supervisor can inhabit depending on the chosen profile:
+
+- programmer: helps plan, inspect, review, and drive coding work
+- teacher: explains what is happening and why in plain language
+- companion: keeps the session warm, persistent, and less mentally taxing
+
+The interface should make it feel like the user is sitting beside a capable collaborator who can:
+
+- hear the user naturally
+- see enough of the current interface state to stay oriented
+- watch Claude's live terminal output
+- inspect the repository with bounded tools
+- research the web when the task needs fresh information
+- ask for approval before crossing risky boundaries
 
 ## Current Status
 
-The realtime track now authorizes a browser-based `realtime v1` prototype under
-`apps/realtime_voice/`.
+`realtime v1` is running under `apps/realtime_voice/` and currently includes:
 
-The prototype is experimental. The stable supported day-to-day workflow remains Claude
-Code plus the `voice-mode` MCP server.
-
-## `realtime v1` Scope
-
-The current prototype scope is:
-
-- browser microphone capture
-- WebRTC connection to the OpenAI Realtime API
-- a local Node server that mints short-lived Realtime client secrets
-- brief spoken coding-assistant behavior
+- browser microphone capture over WebRTC
+- local short-lived token minting
 - live transcript and diagnostics UI
+- a Python supervisor using the OpenAI Agents SDK
+- a tmux-backed Claude terminal harness
+- a read-only mentor layer for repo explanation and prompt drafting
+- approval-gated prompt sending for risky Claude actions
+- live read-only terminal monitoring in the browser
 
-See:
+This is enough to validate the interaction loop, but it is not yet the intended product shape.
 
-- `apps/realtime_voice/README.md`
-- `apps/realtime_voice/docs/overview.md`
-- `apps/realtime_voice/docs/design.md`
-- `apps/realtime_voice/docs/local-setup.md`
+## What We Are Building Next
 
-## What Is Still Deferred
+The next phase is about making the supervisor feel present, persistent, and grounded in the
+actual session.
 
-- tool use inside the realtime assistant
-- shared abstractions with `apps/claude_code_voice/`
-- publishable packaging or deployment beyond local prototype use
-- any decision to replace the stable lane
+### Phase 1: Persistent Context And Interface Awareness
+
+Goal:
+Give the supervisor durable awareness of the active browser session so it stops feeling like a
+fresh agent on every turn.
+
+Deliverables:
+
+- structured browser-state sync from the UI to the Python supervisor
+- persistent profile memory for active character, style, goal, and recent conversation state
+- a shared project lane that stays stable while the user switches between teacher, programmer, or companion profiles
+- visible confirmation in the UI that the supervisor has the right profile and context
+- mentor and supervisor runs that can use this memory instead of relying only on the latest request
+
+Out of scope:
+
+- arbitrary file writes
+- arbitrary shell execution
+- screenshot-driven control as a default path
+
+### Phase 2: Research And Knowledge Tools
+
+Goal:
+Let the supervisor pull in fresh information when the task actually depends on current external
+state.
+
+Deliverables:
+
+- a dedicated research specialist with hosted web search
+- explicit tool-routing rules so local repo tools, web search, and mentor tools do not overlap blindly
+- citations or source summaries for research-heavy answers
+
+Out of scope:
+
+- general-purpose browsing everywhere by default
+- replacing local repo inspection with web tools
+
+### Phase 3: Workspace Interaction
+
+Goal:
+Let the supervisor act on the local project in a controlled, reviewable way.
+
+Deliverables:
+
+- bounded workspace tools for reading, searching, and selected writes
+- narrow execution tools for approved commands only
+- stronger approval categories for edits, installs, server starts, and destructive actions
+- traces and action summaries that make supervisor behavior legible
+
+Out of scope:
+
+- unrestricted shell access
+- silent autonomous edits without a clear approval model
+
+### Phase 4: Visual Supervision And Computer Use
+
+Goal:
+Fill the remaining visibility gaps for browser and UI workflows that structured state cannot
+cover.
+
+Deliverables:
+
+- optional screenshot feeds or isolated browser harnesses
+- a separate computer-use specialist rather than making all supervisor turns screenshot-first
+- approval-gated UI actions for high-impact interactions
+
+Out of scope:
+
+- replacing the tmux Claude harness with computer use
+- running visual automation on the host machine without isolation
+
+### Phase 5: Polished Role Profiles
+
+Goal:
+Make the same underlying system feel intentionally different across programmer, teacher, and
+companion modes.
+
+Deliverables:
+
+- profile-specific prompts and memory shaping
+- profile-aware response behavior in both voice and on-screen summaries
+- clearer UX for switching roles without losing session continuity
+
+## Immediate Working Plan
+
+The current implementation priority order is:
+
+1. persistent context and interface awareness
+2. research specialist with hosted web search
+3. bounded workspace interaction
+4. computer-use fallback
+5. profile polish and evaluation
+
+That order is intentional:
+
+- persistent context makes the whole system feel coherent
+- research is useful early and relatively safe
+- workspace power should come after context and approval boundaries are clearer
+- computer use is valuable, but only after we know exactly what structured state still misses
+
+## Architecture Principles
+
+The roadmap assumes these principles stay in place:
+
+- browser-first voice remains the transport layer
+- the Python supervisor remains the reasoning and orchestration layer
+- Claude terminal interaction stays text-native and tmux-backed by default
+- specialized agents are preferred over a single monolithic supervisor
+- approvals stay explicit around risky actions
+- traces and local state should make the system debuggable
 
 ## What Must Remain Separate
 
-The following must remain separate from `apps/claude_code_voice/` until both tracks prove a real shared need:
+The following still must remain separate from `apps/claude_code_voice/` unless a real shared
+need is proven later:
 
 - runtime processes and entrypoints
-- transport and session assumptions
-- prompts, patches, and setup materials that belong to the stable integration lane
-- app-level assets and implementation details
+- transport assumptions
+- prompts and presets specific to the realtime experience
+- browser UI implementation details
+- supervisor-specific orchestration and memory state
 
-## Current Constraint
+The stable Claude Code lane remains the supported day-to-day path.
 
-Do not let the existence of the prototype blur the repo contract:
+## Success Criteria For This Track
 
-- the stable Claude Code lane is still the supported path
-- the realtime lane is still experimental
-- no shared runtime should be assumed between them
+This roadmap is working if the user can honestly say:
+
+- "The supervisor remembers what we are doing."
+- "It understands the interface it is sitting inside."
+- "It can see Claude's work without me narrating everything."
+- "It only asks for approval when the boundary actually matters."
+- "It feels more like collaborating with a programmer, teacher, or companion than operating a demo."
+
+## Near-Term Milestone
+
+The next milestone for `realtime v1` is:
+
+- supervisor session memory for profile and goal state
+- structured browser-state sync into the supervisor
+- visible supervisor memory summary in the interface
+- the first research-specialist design pass queued up behind that work

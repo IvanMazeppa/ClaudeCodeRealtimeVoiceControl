@@ -25,6 +25,8 @@ async def _run() -> int:
         "command",
         choices=[
             "health",
+            "state",
+            "sync-browser-state",
             "ensure-session",
             "observe",
             "handle-turn",
@@ -58,45 +60,65 @@ async def _run() -> int:
     repo_root = Path(args.repo_root).resolve()
     service = SupervisorService(repo_root=repo_root, app_root=app_root)
     payload = _read_payload(args.payload_json)
+    session_id = str(payload.get("sessionId") or "default")
+    profile_session_id = str(payload.get("profileSessionId") or "").strip() or None
+    browser_state = payload.get("browserState")
+
+    if browser_state is not None and args.command not in {"health", "sync-browser-state"}:
+        await service.sync_browser_state(session_id, profile_session_id, browser_state)
 
     if args.command == "health":
-        result = await service.health()
+        result = await service.health(str(payload.get("sessionId") or "") or None, profile_session_id)
+    elif args.command == "state":
+        result = await service.state(session_id, profile_session_id)
+    elif args.command == "sync-browser-state":
+        result = await service.sync_browser_state(
+            session_id,
+            profile_session_id,
+            browser_state if isinstance(browser_state, dict) else {},
+        )
     elif args.command == "ensure-session":
-        result = await service.ensure_claude_session(str(payload.get("sessionId") or "default"))
+        result = await service.ensure_claude_session(session_id, profile_session_id)
     elif args.command == "observe":
-        result = await service.observe(str(payload.get("sessionId") or "default"))
+        result = await service.observe(session_id, profile_session_id)
     elif args.command == "handle-turn":
         result = await service.handle_turn(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("userText") or ""),
         )
     elif args.command == "manual-prompt":
         result = await service.send_manual_prompt(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("prompt") or ""),
         )
     elif args.command == "interrupt":
-        result = await service.interrupt_claude(str(payload.get("sessionId") or "default"))
+        result = await service.interrupt_claude(session_id, profile_session_id)
     elif args.command == "explain-latest":
-        result = await service.explain_latest_changes(str(payload.get("sessionId") or "default"))
+        result = await service.explain_latest_changes(session_id, profile_session_id)
     elif args.command == "second-opinion":
         result = await service.second_opinion(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("goal") or payload.get("userText") or ""),
         )
     elif args.command == "draft-claude-prompt":
         result = await service.draft_claude_prompt(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("goal") or payload.get("userText") or ""),
         )
     elif args.command == "explain-approval":
         result = await service.explain_approval(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("callId") or ""),
         )
     else:
         result = await service.resolve_approval(
-            str(payload.get("sessionId") or "default"),
+            session_id,
+            profile_session_id,
             str(payload.get("callId") or ""),
             approve=bool(payload.get("approve")),
             always=bool(payload.get("always", False)),

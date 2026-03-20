@@ -300,6 +300,15 @@ async function runPythonSupervisor(command, payload = {}) {
   }
 }
 
+function buildSupervisorPayload(req, extra = {}) {
+  return {
+    sessionId: req.body?.sessionId ?? req.query?.sessionId,
+    profileSessionId: req.body?.profileSessionId ?? req.query?.profileSessionId,
+    browserState: req.body?.browserState,
+    ...extra
+  };
+}
+
 function buildSession({
   voice = defaultVoice,
   instructions = readInstructions()
@@ -356,9 +365,9 @@ app.get("/api/prompt-config", (_req, res) => {
   });
 });
 
-app.get("/api/supervisor/health", async (_req, res) => {
+app.get("/api/supervisor/health", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("health");
+    const data = await runPythonSupervisor("health", buildSupervisorPayload(req));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -371,9 +380,7 @@ app.get("/api/supervisor/health", async (_req, res) => {
 
 app.post("/api/supervisor/session", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("ensure-session", {
-      sessionId: req.body?.sessionId
-    });
+    const data = await runPythonSupervisor("ensure-session", buildSupervisorPayload(req));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -384,11 +391,35 @@ app.post("/api/supervisor/session", async (req, res) => {
   }
 });
 
+app.post("/api/supervisor/state", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("state", buildSupervisorPayload(req));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to fetch the lightweight supervisor state.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post("/api/supervisor/context", async (req, res) => {
+  try {
+    const data = await runPythonSupervisor("sync-browser-state", buildSupervisorPayload(req));
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Failed to sync browser context into the Python supervisor.",
+      detail: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 app.post("/api/supervisor/observe", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("observe", {
-      sessionId: req.body?.sessionId
-    });
+    const data = await runPythonSupervisor("observe", buildSupervisorPayload(req));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -401,10 +432,9 @@ app.post("/api/supervisor/observe", async (req, res) => {
 
 app.post("/api/supervisor/turn", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("handle-turn", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("handle-turn", buildSupervisorPayload(req, {
       userText: req.body?.userText
-    });
+    }));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -417,10 +447,9 @@ app.post("/api/supervisor/turn", async (req, res) => {
 
 app.post("/api/supervisor/manual-prompt", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("manual-prompt", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("manual-prompt", buildSupervisorPayload(req, {
       prompt: req.body?.prompt
-    });
+    }));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -433,9 +462,7 @@ app.post("/api/supervisor/manual-prompt", async (req, res) => {
 
 app.post("/api/supervisor/interrupt", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("interrupt", {
-      sessionId: req.body?.sessionId
-    });
+    const data = await runPythonSupervisor("interrupt", buildSupervisorPayload(req));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -448,9 +475,7 @@ app.post("/api/supervisor/interrupt", async (req, res) => {
 
 app.post("/api/supervisor/explain-latest", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("explain-latest", {
-      sessionId: req.body?.sessionId
-    });
+    const data = await runPythonSupervisor("explain-latest", buildSupervisorPayload(req));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -463,10 +488,9 @@ app.post("/api/supervisor/explain-latest", async (req, res) => {
 
 app.post("/api/supervisor/second-opinion", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("second-opinion", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("second-opinion", buildSupervisorPayload(req, {
       goal: req.body?.goal ?? req.body?.userText
-    });
+    }));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -479,10 +503,9 @@ app.post("/api/supervisor/second-opinion", async (req, res) => {
 
 app.post("/api/supervisor/draft-claude-prompt", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("draft-claude-prompt", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("draft-claude-prompt", buildSupervisorPayload(req, {
       goal: req.body?.goal ?? req.body?.userText
-    });
+    }));
     res.json(data);
   } catch (error) {
     res.status(500).json({
@@ -495,10 +518,9 @@ app.post("/api/supervisor/draft-claude-prompt", async (req, res) => {
 
 app.post("/api/supervisor/explain-approval", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("explain-approval", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("explain-approval", buildSupervisorPayload(req, {
       callId: req.body?.callId
-    });
+    }));
     res.status(data.ok ? 200 : 400).json(data);
   } catch (error) {
     res.status(500).json({
@@ -511,13 +533,12 @@ app.post("/api/supervisor/explain-approval", async (req, res) => {
 
 app.post("/api/supervisor/decision", async (req, res) => {
   try {
-    const data = await runPythonSupervisor("decision", {
-      sessionId: req.body?.sessionId,
+    const data = await runPythonSupervisor("decision", buildSupervisorPayload(req, {
       callId: req.body?.callId,
       approve: req.body?.approve,
       always: req.body?.always,
       rejectionMessage: req.body?.rejectionMessage
-    });
+    }));
     res.status(data.ok ? 200 : 400).json(data);
   } catch (error) {
     res.status(500).json({

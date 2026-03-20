@@ -23,6 +23,13 @@ const supervisorStatusDot = document.getElementById("supervisor-status-dot");
 const supervisorFeedback = document.getElementById("supervisor-feedback");
 const supervisorModelLabel = document.getElementById("supervisor-model-label");
 const supervisorSessionLabel = document.getElementById("supervisor-session-label");
+const sessionMemoryProjectSession = document.getElementById("session-memory-project-session");
+const sessionMemoryProfileSession = document.getElementById("session-memory-profile-session");
+const sessionMemoryProfile = document.getElementById("session-memory-profile");
+const sessionMemoryGoal = document.getElementById("session-memory-goal");
+const sessionMemoryLatestTurn = document.getElementById("session-memory-latest-turn");
+const sessionMemoryUpdated = document.getElementById("session-memory-updated");
+const sessionMemorySummary = document.getElementById("session-memory-summary");
 const supervisorPromptInput = document.getElementById("supervisor-prompt-input");
 const supervisorStartButton = document.getElementById("supervisor-start-btn");
 const supervisorSendLastButton = document.getElementById("supervisor-send-last-btn");
@@ -34,6 +41,9 @@ const supervisorClearDraftButton = document.getElementById("supervisor-clear-dra
 const approvalList = document.getElementById("approval-list");
 const supervisorActionLog = document.getElementById("supervisor-action-log");
 const terminalSnapshot = document.getElementById("terminal-snapshot");
+const supervisorMonitorStatus = document.getElementById("supervisor-monitor-status");
+const supervisorMonitorUpdated = document.getElementById("supervisor-monitor-updated");
+const supervisorMonitorToggleButton = document.getElementById("supervisor-monitor-toggle-btn");
 const mentorGoalInput = document.getElementById("mentor-goal-input");
 const mentorExplainButton = document.getElementById("mentor-explain-btn");
 const mentorSecondOpinionButton = document.getElementById("mentor-second-opinion-btn");
@@ -60,7 +70,12 @@ const supportedVoices = new Set([
 ]);
 const promptPresetStorageKey = "realtimeVoice.selectedPreset";
 const promptCustomStorageKey = "realtimeVoice.customInstructions";
+const promptProfileStateStoragePrefix = "realtimeVoice.profileState";
 const supervisorSessionStorageKey = "realtimeVoice.supervisorSessionId";
+const supervisorMonitorIntervalMs = 1800;
+const supervisorMonitorSlowIntervalMs = 4200;
+const transcriptPreviewLimit = 6;
+const browserStateSyncDebounceMs = 320;
 
 let peerConnection = null;
 let dataChannel = null;
@@ -73,10 +88,21 @@ let assistantDrafts = new Map();
 let lastUserTurn = "";
 let latestPendingApprovals = [];
 let latestMentorDraft = "";
+let transcriptHistory = [];
 let promptConfig = {
   baseInstructions: "",
   presets: []
 };
+let supervisorMonitorEnabled = true;
+let supervisorMonitorTimer = null;
+let supervisorMonitorRefreshing = false;
+let supervisorRequestCount = 0;
+let browserStateSyncTimer = null;
+let browserStateSyncInFlight = false;
+let browserStateFingerprint = "";
+let latestMentorState = emptyMentorState();
+let activeProfileStorageKey = "";
+let activeProfileHasLocalState = false;
 
 function nowLabel() {
   return new Date().toLocaleTimeString([], {
@@ -84,6 +110,268 @@ function nowLabel() {
     minute: "2-digit",
     second: "2-digit"
   });
+}
+
+function safeStorageSegment(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const compact = normalized.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return compact || "base";
+}
+
+function formatSessionHandle(value, fallback) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized.length <= 30) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 14)}...${normalized.slice(-10)}`;
+}
+
+function emptyMentorState() {
+  return {
+    screenSummary: "",
+    bullets: [],
+    risks: [],
+    changedFiles: [],
+    draftedPrompt: ""
+  };
+}
+
+function normalizeStringList(raw, { limit = 6, itemLimit = 220 } = {}) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .slice(0, limit)
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .map((item) => (item.length > itemLimit ? `${item.slice(0, itemLimit - 3).trimEnd()}...` : item));
+}
+
+function normalizeMentorState(raw = {}) {
+  return {
+    screenSummary: String(raw.screenSummary || "").trim(),
+    bullets: normalizeStringList(raw.bullets),
+    risks: normalizeStringList(raw.risks),
+    changedFiles: normalizeStringList(raw.changedFiles),
+    draftedPrompt: String(
+      raw.draftedPrompt
+      || raw.draftedFollowUpPrompt
+      || ""
+    ).trim()
+  };
+}
+
+function normalizeTranscriptHistory(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .slice(-transcriptPreviewLimit)
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const role = String(item.role || "").trim().toLowerCase() || "assistant";
+      const text = String(item.text || "").trim();
+      const capturedAt = String(item.capturedAt || "").trim();
+      if (!text) {
+        return null;
+      }
+
+      return {
+        role,
+        text,
+        capturedAt
+      };
+    })
+    .filter(Boolean);
+}
+
+function activePresetId() {
+  return currentPreset()?.id || presetSelect.value || "";
+}
+
+function currentProfileKey() {
+  return `preset:${safeStorageSegment(activePresetId() || "base")}`;
+}
+
+function buildProfileStorageKey(profileKey = currentProfileKey()) {
+  return `${promptProfileStateStoragePrefix}.${safeStorageSegment(getSupervisorSessionId())}.${safeStorageSegment(profileKey)}`;
+}
+
+function getProfileSessionId() {
+  return `${getSupervisorSessionId()}::${currentProfileKey()}`;
+}
+
+function formatTranscriptTime(capturedAt) {
+  if (!capturedAt) {
+    return nowLabel();
+  }
+
+  const parsed = new Date(capturedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return nowLabel();
+  }
+
+  return parsed.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function renderTranscriptHistory() {
+  transcriptList.innerHTML = "";
+  [...transcriptHistory].reverse().forEach((entry) => {
+    const wrapper = document.createElement("article");
+    wrapper.className = "message";
+    wrapper.dataset.role = entry.role;
+    wrapper.innerHTML = `
+      <div class="message-header">
+        <span>${entry.role}</span>
+        <span>${formatTranscriptTime(entry.capturedAt)}</span>
+      </div>
+      <p class="message-body"></p>
+    `;
+    wrapper.querySelector(".message-body").textContent = entry.text;
+    transcriptList.append(wrapper);
+  });
+}
+
+function currentProfileSnapshot() {
+  return {
+    assistantStyle: styleSelect.value,
+    customInstructions: customInstructionsInput.value.trim(),
+    mentorGoal: mentorGoalInput.value.trim(),
+    manualPromptDraft: supervisorPromptInput.value.trim(),
+    lastUserTurn,
+    transcriptHistory: transcriptHistory.slice(-transcriptPreviewLimit),
+    mentorState: latestMentorState
+  };
+}
+
+function persistActiveProfileState(targetKey = activeProfileStorageKey) {
+  if (!targetKey) {
+    return;
+  }
+
+  localStorage.setItem(targetKey, JSON.stringify(currentProfileSnapshot()));
+  activeProfileHasLocalState = true;
+}
+
+function loadStoredProfileState(profileKey = currentProfileKey()) {
+  const raw = localStorage.getItem(buildProfileStorageKey(profileKey));
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch (error) {
+      addEvent("profile_state_error", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const legacyCustomInstructions = localStorage.getItem(promptCustomStorageKey);
+  if (legacyCustomInstructions?.trim()) {
+    return {
+      customInstructions: legacyCustomInstructions
+    };
+  }
+
+  return null;
+}
+
+function applyProfileState(profileState = {}) {
+  styleSelect.value = String(profileState.assistantStyle || "brief");
+  customInstructionsInput.value = String(profileState.customInstructions || "");
+  mentorGoalInput.value = String(profileState.mentorGoal || "");
+  supervisorPromptInput.value = String(profileState.manualPromptDraft || "");
+  lastUserTurn = String(profileState.lastUserTurn || "").trim();
+  transcriptHistory = normalizeTranscriptHistory(profileState.transcriptHistory);
+  renderTranscriptHistory();
+  renderMentorResponse(profileState.mentorState || emptyMentorState(), {
+    persist: false
+  });
+}
+
+function buildProfileStateFromMemory(memory = {}) {
+  return {
+    assistantStyle: String(memory.assistantStyle || "brief"),
+    customInstructions: String(memory.customInstructions || ""),
+    mentorGoal: String(memory.currentGoal || ""),
+    manualPromptDraft: String(memory.manualPromptDraft || ""),
+    lastUserTurn: String(memory.lastUserTurn || ""),
+    transcriptHistory: normalizeTranscriptHistory(memory.transcriptPreview),
+    mentorState: normalizeMentorState({
+      screenSummary: memory.mentorSummary,
+      bullets: memory.mentorBullets,
+      risks: memory.mentorRisks,
+      changedFiles: memory.mentorFiles,
+      draftedPrompt: memory.latestMentorDraft
+    })
+  };
+}
+
+function hydrateProfileFromSessionMemory(memory = {}) {
+  const restored = buildProfileStateFromMemory(memory);
+  const hasVisibleState = Boolean(
+    restored.customInstructions
+    || restored.mentorGoal
+    || restored.manualPromptDraft
+    || restored.lastUserTurn
+    || restored.transcriptHistory.length
+    || restored.mentorState.screenSummary
+    || restored.mentorState.draftedPrompt
+  );
+  if (!hasVisibleState) {
+    return;
+  }
+
+  applyProfileState(restored);
+  persistActiveProfileState();
+  setPromptSaveStatus("Restored this character from supervisor memory");
+}
+
+function activateCurrentProfile({ announce = false, forceSync = false } = {}) {
+  if (activeProfileStorageKey) {
+    persistActiveProfileState(activeProfileStorageKey);
+  }
+
+  activeProfileStorageKey = buildProfileStorageKey();
+  const storedState = loadStoredProfileState();
+  activeProfileHasLocalState = Boolean(storedState);
+  applyProfileState(storedState || {});
+  renderPresetSummary();
+  renderSessionMemory({
+    projectSessionId: getSupervisorSessionId(),
+    profileSessionId: getProfileSessionId(),
+    profileLabel: profileLabel(),
+    currentGoal: mentorGoalInput.value.trim(),
+    lastUserTurn,
+    updatedAt: activeProfileHasLocalState ? "Local restore ready" : "Waiting for first sync",
+    interfaceSummary:
+      "Claude and project work stay shared across presets. The selected character keeps its own memory, drafts, and mentor thread."
+  });
+
+  if (announce) {
+    setSupervisorFeedback(
+      `Switched to ${profileLabel()}. Claude stays on the shared project lane while this character keeps its own conversation memory.`
+    );
+  }
+
+  browserStateFingerprint = "";
+  if (forceSync) {
+    void syncBrowserState({ force: true });
+  }
 }
 
 function selectedVoice() {
@@ -118,6 +406,14 @@ function setSupervisorStatus(label, tone = "idle") {
   applyStatusTone(supervisorStatusDot, tone);
 }
 
+function setSupervisorMonitorState(label) {
+  supervisorMonitorStatus.textContent = label;
+}
+
+function setSupervisorMonitorUpdated(label) {
+  supervisorMonitorUpdated.textContent = label;
+}
+
 function setLiveBanner(text) {
   liveBanner.textContent = text;
 }
@@ -139,22 +435,16 @@ function addMessage(role, text) {
     return;
   }
 
-  const wrapper = document.createElement("article");
-  wrapper.className = "message";
-  wrapper.dataset.role = role;
-  wrapper.innerHTML = `
-    <div class="message-header">
-      <span>${role}</span>
-      <span>${nowLabel()}</span>
-    </div>
-    <p class="message-body"></p>
-  `;
-  wrapper.querySelector(".message-body").textContent = text.trim();
-  transcriptList.prepend(wrapper);
+  const normalized = text.trim();
+  rememberTranscriptEntry(role, normalized);
 
   if (role === "user") {
-    lastUserTurn = text.trim();
+    lastUserTurn = normalized;
   }
+
+  renderTranscriptHistory();
+  persistActiveProfileState();
+  scheduleBrowserStateSync();
 }
 
 function updateDraft(map, key, delta) {
@@ -183,21 +473,133 @@ function renderPresetSummary() {
   presetSummary.textContent = preset.content;
 }
 
+function rememberTranscriptEntry(role, text) {
+  transcriptHistory.push({
+    role,
+    text,
+    capturedAt: new Date().toISOString()
+  });
+  if (transcriptHistory.length > transcriptPreviewLimit) {
+    transcriptHistory = transcriptHistory.slice(-transcriptPreviewLimit);
+  }
+}
+
+function profileLabel() {
+  const preset = currentPreset();
+  const presetTitle = preset?.title || "Base coding voice mode";
+  return `${presetTitle} / ${styleSelect.value}`;
+}
+
+function buildBrowserState() {
+  return {
+    realtimeConnected: Boolean(peerConnection && peerConnection.connectionState === "connected"),
+    realtimeStatus: statusText.textContent.trim(),
+    supervisorStatus: supervisorStatusText.textContent.trim(),
+    profileSessionId: getProfileSessionId(),
+    voice: selectedVoice(),
+    turnDetection: turnSelect.value,
+    assistantStyle: styleSelect.value,
+    selectedPresetId: currentPreset()?.id || "",
+    selectedPresetTitle: currentPreset()?.title || "",
+    customInstructions: customInstructionsInput.value.trim(),
+    profileLabel: profileLabel(),
+    liveTerminalEnabled: supervisorMonitorEnabled,
+    pendingApprovalCount: latestPendingApprovals.length,
+    lastUserTurn,
+    manualPromptDraft: supervisorPromptInput.value.trim(),
+    mentorGoal: mentorGoalInput.value.trim(),
+    latestMentorDraft,
+    mentorSummary: latestMentorState.screenSummary,
+    mentorBullets: latestMentorState.bullets,
+    mentorRisks: latestMentorState.risks,
+    mentorFiles: latestMentorState.changedFiles,
+    transcriptPreview: transcriptHistory.slice(-4)
+  };
+}
+
+function renderSessionMemory(memory = {}) {
+  sessionMemoryProjectSession.textContent = formatSessionHandle(
+    memory.projectSessionId,
+    "Shared lane not created yet"
+  );
+  sessionMemoryProjectSession.title = String(memory.projectSessionId || "");
+  sessionMemoryProfileSession.textContent = formatSessionHandle(
+    memory.profileSessionId,
+    "Character lane not created yet"
+  );
+  sessionMemoryProfileSession.title = String(memory.profileSessionId || "");
+  sessionMemoryProfile.textContent = memory.profileLabel?.trim()
+    || "Awaiting browser sync";
+  sessionMemoryGoal.textContent = memory.currentGoal?.trim()
+    || "No goal captured yet";
+  sessionMemoryLatestTurn.textContent = memory.lastUserTurn?.trim()
+    || "No recent turn captured yet";
+  sessionMemoryUpdated.textContent = memory.updatedAt?.trim()
+    || "Not yet";
+  sessionMemorySummary.textContent = memory.interfaceSummary?.trim()
+    || "The supervisor has not received browser context yet.";
+}
+
+function scheduleBrowserStateSync(delay = browserStateSyncDebounceMs) {
+  if (browserStateSyncTimer) {
+    window.clearTimeout(browserStateSyncTimer);
+  }
+
+  browserStateSyncTimer = window.setTimeout(() => {
+    void syncBrowserState();
+  }, delay);
+}
+
+async function syncBrowserState({ force = false } = {}) {
+  const browserState = buildBrowserState();
+  const fingerprint = JSON.stringify(browserState);
+  if (!force && fingerprint === browserStateFingerprint) {
+    return;
+  }
+
+  if (browserStateSyncInFlight) {
+    return;
+  }
+
+  browserStateSyncInFlight = true;
+  try {
+    const response = await fetch("/api/supervisor/context", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: getSupervisorSessionId(),
+        profileSessionId: getProfileSessionId(),
+        browserState
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || data.error || "Browser-state sync failed.");
+    }
+
+    browserStateFingerprint = fingerprint;
+    renderSessionMemory(data.sessionMemory || {});
+  } catch (error) {
+    addEvent("supervisor_context_error", error instanceof Error ? error.message : String(error));
+  } finally {
+    browserStateSyncInFlight = false;
+  }
+}
+
 function savePromptState() {
   localStorage.setItem(promptPresetStorageKey, presetSelect.value);
-  localStorage.setItem(promptCustomStorageKey, customInstructionsInput.value);
-  setPromptSaveStatus("Saved locally");
+  persistActiveProfileState();
+  localStorage.removeItem(promptCustomStorageKey);
+  setPromptSaveStatus("Saved to this character");
+  scheduleBrowserStateSync();
 }
 
 function restorePromptState() {
   const savedPreset = localStorage.getItem(promptPresetStorageKey);
-  const savedCustom = localStorage.getItem(promptCustomStorageKey);
-
   if (savedPreset) {
     presetSelect.value = savedPreset;
-  }
-  if (savedCustom) {
-    customInstructionsInput.value = savedCustom;
   }
 }
 
@@ -209,8 +611,6 @@ function renderPresetOptions() {
     )
   ];
   presetSelect.innerHTML = options.join("");
-  restorePromptState();
-  renderPresetSummary();
 }
 
 async function loadPromptConfig() {
@@ -225,6 +625,8 @@ async function loadPromptConfig() {
     presets: Array.isArray(data.presets) ? data.presets : []
   };
   renderPresetOptions();
+  restorePromptState();
+  activateCurrentProfile();
 }
 
 function buildInstructions() {
@@ -459,6 +861,7 @@ async function connect() {
     await peerConnection.setRemoteDescription(answer);
     disconnectButton.disabled = false;
     muteButton.disabled = false;
+    scheduleBrowserStateSync();
   } catch (error) {
     setStatus("Error", "error");
     setLiveBanner(error instanceof Error ? error.message : String(error));
@@ -493,6 +896,7 @@ function disconnect() {
   muteButton.disabled = true;
   setStatus("Idle");
   setLiveBanner("Session disconnected.");
+  scheduleBrowserStateSync();
 }
 
 function toggleMute() {
@@ -507,7 +911,9 @@ function toggleMute() {
 }
 
 function markPromptDirty() {
-  setPromptSaveStatus("Unsaved local changes", true);
+  persistActiveProfileState();
+  setPromptSaveStatus("Profile draft updated locally", true);
+  scheduleBrowserStateSync();
 }
 
 function getSupervisorSessionId() {
@@ -558,6 +964,7 @@ function renderApprovals(items) {
   approvalList.innerHTML = "";
   if (!items || !items.length) {
     approvalList.textContent = "No approvals pending.";
+    scheduleBrowserStateSync();
     return;
   }
 
@@ -578,6 +985,8 @@ function renderApprovals(items) {
     `;
     approvalList.append(wrapper);
   });
+
+  scheduleBrowserStateSync();
 }
 
 function speakText(text) {
@@ -590,6 +999,50 @@ function speakText(text) {
   utterance.rate = 1;
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
+}
+
+function updateSupervisorMonitorButton() {
+  supervisorMonitorToggleButton.textContent = supervisorMonitorEnabled
+    ? "Pause live view"
+    : "Resume live view";
+}
+
+function syncSupervisorMonitorState(data) {
+  if (!supervisorMonitorEnabled) {
+    setSupervisorMonitorState("Live view paused");
+    return;
+  }
+
+  if (data.pendingApprovals?.length) {
+    setSupervisorMonitorState("Watching approvals");
+  } else if (!data.claudeSessionExists) {
+    setSupervisorMonitorState("Waiting for Claude");
+  } else if (data.terminalReady) {
+    setSupervisorMonitorState("Live view active");
+  } else {
+    setSupervisorMonitorState("Watching Claude work");
+  }
+
+  setSupervisorMonitorUpdated(nowLabel());
+}
+
+function nextSupervisorMonitorDelay() {
+  return document.hidden ? supervisorMonitorSlowIntervalMs : supervisorMonitorIntervalMs;
+}
+
+function scheduleSupervisorMonitor(delay = nextSupervisorMonitorDelay()) {
+  if (supervisorMonitorTimer) {
+    window.clearTimeout(supervisorMonitorTimer);
+    supervisorMonitorTimer = null;
+  }
+
+  if (!supervisorMonitorEnabled) {
+    return;
+  }
+
+  supervisorMonitorTimer = window.setTimeout(() => {
+    void refreshSupervisorMonitor();
+  }, delay);
 }
 
 function renderMentorList(target, items, emptyText) {
@@ -608,46 +1061,79 @@ function renderMentorList(target, items, emptyText) {
   });
 }
 
-function renderMentorResponse(data = {}) {
-  const screenSummary = data.screenSummary?.trim();
-  const draft = (data.draftedPrompt || data.draftedFollowUpPrompt || "").trim();
+function renderMentorResponse(data = {}, { persist = true } = {}) {
+  const mentorState = normalizeMentorState(data);
+  const screenSummary = mentorState.screenSummary;
+  const draft = mentorState.draftedPrompt;
   latestMentorDraft = draft;
+  latestMentorState = mentorState;
 
   mentorSummary.textContent = screenSummary
     || "Mentor results will appear here once you run one of the mentor actions.";
-  renderMentorList(mentorBullets, data.bullets, "No mentor detail yet.");
-  renderMentorList(mentorRisks, data.risks, "No risks highlighted yet.");
-  renderMentorList(mentorFiles, data.changedFiles, "No files highlighted yet.");
+  renderMentorList(mentorBullets, mentorState.bullets, "No mentor detail yet.");
+  renderMentorList(mentorRisks, mentorState.risks, "No risks highlighted yet.");
+  renderMentorList(mentorFiles, mentorState.changedFiles, "No files highlighted yet.");
   mentorDraftOutput.textContent = draft || "No drafted Claude prompt yet.";
   mentorUseDraftButton.disabled = !draft;
+
+  if (persist) {
+    persistActiveProfileState();
+  }
 }
 
 async function callSupervisor(path, payload = {}) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      sessionId: getSupervisorSessionId(),
-      ...payload
-    })
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.detail || data.error || "Supervisor request failed.");
+  supervisorRequestCount += 1;
+  const browserState = buildBrowserState();
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: getSupervisorSessionId(),
+        profileSessionId: getProfileSessionId(),
+        browserState,
+        ...payload
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || data.error || "Supervisor request failed.");
+    }
+    browserStateFingerprint = JSON.stringify(browserState);
+    renderSessionMemory(data.sessionMemory || {});
+    return data;
+  } finally {
+    supervisorRequestCount = Math.max(0, supervisorRequestCount - 1);
   }
-  return data;
 }
 
-function applySupervisorResponse(data, { speak = true, addTranscriptMessage = true } = {}) {
+function applySupervisorResponse(
+  data,
+  {
+    speak = true,
+    addTranscriptMessage = true,
+    passive = false
+  } = {}
+) {
   supervisorModelLabel.textContent = data.supervisorModel || supervisorModelLabel.textContent;
   supervisorSessionLabel.textContent = data.sessionId || getSupervisorSessionId();
-  setSupervisorFeedback(data.spokenResponse || "The Python supervisor finished without a spoken summary.");
+  renderSessionMemory(data.sessionMemory || {});
+
+  if (!passive) {
+    setSupervisorFeedback(data.spokenResponse || "The Python supervisor finished without a spoken summary.");
+  }
   setTerminalSnapshot(data.terminalSnapshot || "");
-  renderSupervisorActionLog(Array.isArray(data.actionLog) ? data.actionLog : []);
+  if (!passive) {
+    renderSupervisorActionLog(Array.isArray(data.actionLog) ? data.actionLog : []);
+  }
   renderApprovals(Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []);
-  renderMentorResponse(data.mentor || {});
+  if (!passive) {
+    renderMentorResponse(data.mentor || {}, {
+      persist: true
+    });
+  }
 
   if (data.pendingApprovals?.length) {
     setSupervisorStatus("Awaiting approval", "busy");
@@ -656,40 +1142,114 @@ function applySupervisorResponse(data, { speak = true, addTranscriptMessage = tr
   } else {
     setSupervisorStatus("Claude not attached", "idle");
   }
+  syncSupervisorMonitorState(data);
 
-  if (data.spokenResponse && addTranscriptMessage) {
+  if (!passive && data.spokenResponse && addTranscriptMessage) {
     addMessage("assistant", data.spokenResponse);
   }
-  if (data.spokenResponse && speak) {
+  if (!passive && data.spokenResponse && speak) {
     speakText(data.spokenResponse);
   }
+
+  if (!passive) {
+    scheduleSupervisorMonitor(900);
+  }
+
+  scheduleBrowserStateSync(180);
 }
 
 async function refreshSupervisorHealth() {
   try {
-    const response = await fetch("/api/supervisor/health");
+    const response = await fetch(
+      `/api/supervisor/health?sessionId=${encodeURIComponent(getSupervisorSessionId())}&profileSessionId=${encodeURIComponent(getProfileSessionId())}`
+    );
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.detail || data.error || "Supervisor health failed.");
     }
 
+    if (!activeProfileHasLocalState) {
+      hydrateProfileFromSessionMemory(data.sessionMemory || {});
+    }
+
     supervisorModelLabel.textContent = data.supervisorModel || "gpt-5.4";
     supervisorSessionLabel.textContent = getSupervisorSessionId();
+    renderSessionMemory(data.sessionMemory || {});
     setTerminalSnapshot(data.terminal?.output || "");
     renderSupervisorActionLog([]);
-    renderApprovals([]);
-    renderMentorResponse({});
+    renderApprovals(Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []);
+    renderMentorResponse(latestMentorState, {
+      persist: false
+    });
     setSupervisorFeedback("Supervisor loaded. Start or verify Claude when you want the backend to take over.");
+    updateSupervisorMonitorButton();
+    setSupervisorMonitorUpdated("Not yet");
     if (data.terminal?.session_exists) {
       setSupervisorStatus(data.terminal.ready ? "Claude ready" : "Claude busy", data.terminal.ready ? "live" : "busy");
     } else {
       setSupervisorStatus("Claude not attached", "idle");
     }
+    syncSupervisorMonitorState({
+      claudeSessionExists: Boolean(data.terminal?.session_exists),
+      terminalReady: Boolean(data.terminal?.ready),
+      pendingApprovals: Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []
+    });
+    scheduleBrowserStateSync(180);
+    scheduleSupervisorMonitor(1200);
   } catch (error) {
     setSupervisorStatus("Supervisor error", "error");
     setSupervisorFeedback(error instanceof Error ? error.message : String(error));
+    setSupervisorMonitorState("Live view retrying");
     addEvent("supervisor_health_error", error instanceof Error ? error.message : String(error));
+    scheduleSupervisorMonitor(2500);
   }
+}
+
+async function refreshSupervisorMonitor() {
+  if (!supervisorMonitorEnabled) {
+    return;
+  }
+
+  if (supervisorMonitorRefreshing || supervisorRequestCount > 0) {
+    scheduleSupervisorMonitor(900);
+    return;
+  }
+
+  supervisorMonitorRefreshing = true;
+  try {
+    const data = await callSupervisor("/api/supervisor/observe");
+    applySupervisorResponse(data, {
+      speak: false,
+      addTranscriptMessage: false,
+      passive: true
+    });
+  } catch (error) {
+    setSupervisorMonitorState("Live view retrying");
+    addEvent("supervisor_monitor_error", error instanceof Error ? error.message : String(error));
+    scheduleSupervisorMonitor(2500);
+  } finally {
+    supervisorMonitorRefreshing = false;
+    if (supervisorMonitorEnabled) {
+      scheduleSupervisorMonitor();
+    }
+  }
+}
+
+function toggleSupervisorMonitor() {
+  supervisorMonitorEnabled = !supervisorMonitorEnabled;
+  updateSupervisorMonitorButton();
+  scheduleBrowserStateSync();
+  if (!supervisorMonitorEnabled) {
+    if (supervisorMonitorTimer) {
+      window.clearTimeout(supervisorMonitorTimer);
+      supervisorMonitorTimer = null;
+    }
+    setSupervisorMonitorState("Live view paused");
+    return;
+  }
+
+  setSupervisorMonitorState("Resuming live view");
+  void refreshSupervisorMonitor();
 }
 
 async function startSupervisorClaude() {
@@ -744,7 +1304,9 @@ function useLastHeardTurn() {
   }
 
   supervisorPromptInput.value = lastUserTurn;
+  persistActiveProfileState();
   setSupervisorFeedback("Moved the last heard turn into the manual prompt draft box.");
+  scheduleBrowserStateSync();
 }
 
 async function sendManualDraft() {
@@ -880,14 +1442,44 @@ function useMentorDraft() {
   }
 
   supervisorPromptInput.value = latestMentorDraft;
+  persistActiveProfileState();
   setSupervisorFeedback("Moved the drafted mentor prompt into the Claude draft box.");
+  scheduleBrowserStateSync();
 }
 
 presetSelect.addEventListener("change", () => {
-  renderPresetSummary();
-  markPromptDirty();
+  localStorage.setItem(promptPresetStorageKey, presetSelect.value);
+  activateCurrentProfile({
+    announce: true,
+    forceSync: true
+  });
+  setPromptSaveStatus("Loaded this character");
+});
+voiceSelect.addEventListener("change", scheduleBrowserStateSync);
+turnSelect.addEventListener("change", scheduleBrowserStateSync);
+styleSelect.addEventListener("change", () => {
+  persistActiveProfileState();
+  renderSessionMemory({
+    projectSessionId: getSupervisorSessionId(),
+    profileSessionId: getProfileSessionId(),
+    profileLabel: profileLabel(),
+    currentGoal: mentorGoalInput.value.trim(),
+    lastUserTurn,
+    updatedAt: "Local draft updated",
+    interfaceSummary:
+      "Claude work stays on the shared project lane. This character lane now has updated style and local memory."
+  });
+  scheduleBrowserStateSync();
 });
 customInstructionsInput.addEventListener("input", markPromptDirty);
+supervisorPromptInput.addEventListener("input", () => {
+  persistActiveProfileState();
+  scheduleBrowserStateSync();
+});
+mentorGoalInput.addEventListener("input", () => {
+  persistActiveProfileState();
+  scheduleBrowserStateSync();
+});
 savePromptButton.addEventListener("click", savePromptState);
 clearPromptButton.addEventListener("click", () => {
   customInstructionsInput.value = "";
@@ -905,8 +1497,11 @@ supervisorUseLastButton.addEventListener("click", useLastHeardTurn);
 supervisorSendDraftButton.addEventListener("click", sendManualDraft);
 supervisorClearDraftButton.addEventListener("click", () => {
   supervisorPromptInput.value = "";
+  persistActiveProfileState();
   setSupervisorFeedback("Cleared the manual Claude prompt draft.");
+  scheduleBrowserStateSync();
 });
+supervisorMonitorToggleButton.addEventListener("click", toggleSupervisorMonitor);
 mentorExplainButton.addEventListener("click", explainLatestChanges);
 mentorSecondOpinionButton.addEventListener("click", requestSecondOpinion);
 mentorDraftPromptButton.addEventListener("click", draftClaudePrompt);
@@ -932,16 +1527,37 @@ approvalList.addEventListener("click", (event) => {
   void handleApprovalDecision(callId, action === "approve");
 });
 
-addEvent("ready", "UI loaded. Choose your voice settings and connect when ready.");
-loadPromptConfig()
-  .then(() => {
+document.addEventListener("visibilitychange", () => {
+  if (!supervisorMonitorEnabled) {
+    return;
+  }
+
+  if (document.hidden) {
+    scheduleSupervisorMonitor();
+    return;
+  }
+
+  void refreshSupervisorMonitor();
+});
+
+async function initializeApp() {
+  addEvent("ready", "UI loaded. Choose your voice settings and connect when ready.");
+  renderSupervisorActionLog([]);
+  renderApprovals([]);
+  renderMentorResponse(emptyMentorState());
+  renderSessionMemory({});
+
+  try {
+    await loadPromptConfig();
     addEvent("prompt_config", `Loaded ${promptConfig.presets.length} preset personalities.`);
-  })
-  .catch((error) => {
+  } catch (error) {
     addEvent("prompt_config_error", error instanceof Error ? error.message : String(error));
     setPromptSaveStatus("Prompt presets unavailable");
-  });
-renderSupervisorActionLog([]);
-renderApprovals([]);
-renderMentorResponse({});
-refreshSupervisorHealth();
+    activateCurrentProfile();
+  }
+
+  await refreshSupervisorHealth();
+  scheduleBrowserStateSync(120);
+}
+
+void initializeApp();

@@ -183,10 +183,52 @@
           </div>
         </div>
 
+        <article class="bridge-output session-memory-panel">
+          <div class="panel-header bridge-output-header">
+            <div>
+              <p class="panel-kicker">Conversation Memory</p>
+              <h3>Shared project lane plus the current character lane</h3>
+            </div>
+          </div>
+          <p class="memory-note">
+            Claude and project work stay shared across presets. Mentor context, drafts, and recent
+            conversation now follow the selected character preset.
+          </p>
+          <div class="session-memory-grid">
+            <div>
+              <span class="meta-label">Shared Claude lane</span>
+              <strong id="session-memory-project-session">Shared lane not created yet</strong>
+            </div>
+            <div>
+              <span class="meta-label">Character lane</span>
+              <strong id="session-memory-profile-session">Character lane not created yet</strong>
+            </div>
+            <div>
+              <span class="meta-label">Active profile</span>
+              <strong id="session-memory-profile">Awaiting browser sync</strong>
+            </div>
+            <div>
+              <span class="meta-label">Current goal</span>
+              <strong id="session-memory-goal">No goal captured yet</strong>
+            </div>
+            <div>
+              <span class="meta-label">Latest turn</span>
+              <strong id="session-memory-latest-turn">No recent turn captured yet</strong>
+            </div>
+            <div>
+              <span class="meta-label">Last sync</span>
+              <strong id="session-memory-updated">Not yet</strong>
+            </div>
+          </div>
+          <p id="session-memory-summary" class="memory-summary">
+            The supervisor has not received browser context yet.
+          </p>
+        </article>
+
         <div class="button-row bridge-buttons">
           <button id="supervisor-start-btn" class="button" type="button">Start / verify Claude</button>
           <button id="supervisor-send-last-btn" class="button primary" type="button">Send last heard turn</button>
-          <button id="supervisor-observe-btn" class="button" type="button">Read Claude state</button>
+          <button id="supervisor-observe-btn" class="button" type="button">Summarize Claude state</button>
           <button id="supervisor-interrupt-btn" class="button" type="button">Interrupt Claude</button>
         </div>
 
@@ -203,6 +245,18 @@
           <button id="supervisor-use-last-btn" class="button" type="button">Use last heard turn</button>
           <button id="supervisor-send-draft-btn" class="button primary" type="button">Send draft to Claude</button>
           <button id="supervisor-clear-draft-btn" class="button" type="button">Clear draft</button>
+        </div>
+
+        <div class="supervisor-live-row">
+          <div class="monitor-meta">
+            <span class="meta-label">Live terminal</span>
+            <strong id="supervisor-monitor-status">Starting automatic refresh</strong>
+          </div>
+          <div class="monitor-meta">
+            <span class="meta-label">Last update</span>
+            <strong id="supervisor-monitor-updated">Not yet</strong>
+          </div>
+          <button id="supervisor-monitor-toggle-btn" class="button" type="button">Pause live view</button>
         </div>
 
         <div class="controls-grid supervisor-grid">
@@ -231,9 +285,13 @@
           <div class="panel-header bridge-output-header">
             <div>
               <p class="panel-kicker">Claude Snapshot</p>
-              <h3>Visible terminal capture</h3>
+              <h3>Live terminal view</h3>
             </div>
           </div>
+          <p class="monitor-note">
+            Read-only for now. This panel refreshes automatically while Claude works so you can
+            follow along without pressing a button each time.
+          </p>
           <pre id="terminal-snapshot" class="claude-output terminal-snapshot">The latest visible Claude terminal output will appear here.</pre>
         </article>
 
