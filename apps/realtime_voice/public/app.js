@@ -104,6 +104,12 @@ let latestMentorState = emptyMentorState();
 let activeProfileStorageKey = "";
 let activeProfileHasLocalState = false;
 
+// Companion WebSocket state
+let companionWs = null;
+let companionTools = [];
+let companionInstructions = "";
+let companionReady = false;
+
 function nowLabel() {
   return new Date().toLocaleTimeString([], {
     hour: "2-digit",
@@ -226,6 +232,19 @@ function formatTranscriptTime(capturedAt) {
     minute: "2-digit",
     second: "2-digit"
   });
+}
+
+function compactInstructionText(text, limit = 220) {
+  const normalized = String(text || "").trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
 }
 
 function renderTranscriptHistory() {
@@ -562,6 +581,10 @@ async function syncBrowserState({ force = false } = {}) {
   }
 
   browserStateSyncInFlight = true;
+
+  // Also push state over the companion WebSocket (parallel, non-blocking)
+  syncCompanionBrowserState();
+
   try {
     const response = await fetch("/api/supervisor/context", {
       method: "POST",
@@ -594,6 +617,7 @@ function savePromptState() {
   localStorage.removeItem(promptCustomStorageKey);
   setPromptSaveStatus("Saved to this character");
   scheduleBrowserStateSync();
+  applyLiveSessionUpdate("Saved character instructions into the live Realtime session.");
 }
 
 function restorePromptState() {
@@ -629,6 +653,51 @@ async function loadPromptConfig() {
   activateCurrentProfile();
 }
 
+function buildPersistentPresetMemory() {
+  const memoryLines = [];
+  const currentGoal = compactInstructionText(mentorGoalInput.value, 220);
+  const rememberedTurn = compactInstructionText(lastUserTurn, 240);
+  const rememberedDraft = compactInstructionText(latestMentorDraft, 260);
+  const transcriptLines = transcriptHistory
+    .slice(-4)
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      const role = compactInstructionText(entry.role, 24).toLowerCase() || "assistant";
+      const text = compactInstructionText(entry.text, 180);
+      return text ? `${role}: ${text}` : "";
+    })
+    .filter(Boolean);
+
+  if (currentGoal) {
+    memoryLines.push(`Current standing goal for this preset: ${currentGoal}`);
+  }
+  if (rememberedTurn) {
+    memoryLines.push(`Most recent remembered user turn before this session: ${rememberedTurn}`);
+  }
+  if (rememberedDraft) {
+    memoryLines.push(`Last drafted follow-up for this preset: ${rememberedDraft}`);
+  }
+  if (transcriptLines.length) {
+    memoryLines.push(
+      "Recent remembered conversation for this preset:\n"
+      + transcriptLines.join("\n")
+    );
+  }
+
+  if (!memoryLines.length) {
+    return "";
+  }
+
+  return [
+    "Persistent preset memory carried over after reconnect or refresh.",
+    "Use it as remembered context for this character, not as a new live user turn.",
+    memoryLines.join("\n")
+  ].join("\n");
+}
+
 function buildInstructions() {
   const style = styleSelect.value;
   const styleLine =
@@ -639,12 +708,14 @@ function buildInstructions() {
         : "Keep spoken replies extra short and action-oriented.";
   const preset = currentPreset();
   const customInstructions = customInstructionsInput.value.trim();
+  const persistentPresetMemory = buildPersistentPresetMemory();
 
   return [
     promptConfig.baseInstructions ||
       "You are in realtime voice work mode for coding sessions.",
     preset ? preset.content : "",
     `Current spoken style preference: ${styleLine}`,
+    persistentPresetMemory,
     customInstructions
       ? `Additional user instructions:\n${customInstructions}`
       : ""
@@ -674,11 +745,14 @@ function buildSessionUpdate() {
             interrupt_response: true
           };
 
-  return {
+  // Use companion instructions if available, otherwise fall back to local
+  const instructions = companionInstructions || buildInstructions();
+
+  const sessionPayload = {
     type: "session.update",
     session: {
       type: "realtime",
-      instructions: buildInstructions(),
+      instructions,
       audio: {
         input: {
           transcription: {
@@ -695,6 +769,23 @@ function buildSessionUpdate() {
       }
     }
   };
+
+  // Register companion function tools so the Realtime model can call them
+  if (companionTools.length > 0) {
+    sessionPayload.session.tools = companionTools;
+  }
+
+  return sessionPayload;
+}
+
+function applyLiveSessionUpdate(detail) {
+  if (!dataChannel || dataChannel.readyState !== "open") {
+    return false;
+  }
+
+  dataChannel.send(JSON.stringify(buildSessionUpdate()));
+  addEvent("session.update", detail);
+  return true;
 }
 
 function handleRealtimeEvent(event) {
@@ -731,6 +822,20 @@ function handleRealtimeEvent(event) {
       );
       setStatus("Connected", "live");
       setLiveBanner("Assistant turn completed.");
+      break;
+    case "response.function_call_arguments.done":
+      // Forward tool calls to the companion server for execution
+      if (companionWs && companionWs.readyState === WebSocket.OPEN) {
+        companionWs.send(JSON.stringify({
+          type: "tool_call",
+          name: event.name,
+          callId: event.call_id,
+          arguments: event.arguments,
+        }));
+        addEvent("tool_call", `Calling ${event.name}...`);
+      } else {
+        addEvent("tool_call_error", `Companion not connected; cannot execute ${event.name}`);
+      }
       break;
     case "response.done":
       setStatus("Connected", "live");
@@ -828,9 +933,7 @@ async function connect() {
 
     dataChannel = peerConnection.createDataChannel("oai-events");
     dataChannel.addEventListener("open", () => {
-      const configEvent = buildSessionUpdate();
-      dataChannel.send(JSON.stringify(configEvent));
-      addEvent("session.update", "Applied browser-side Realtime session preferences.");
+      applyLiveSessionUpdate("Applied browser-side Realtime session preferences and restored preset memory.");
     });
     dataChannel.addEventListener("message", (event) => {
       const parsed = JSON.parse(event.data);
@@ -896,6 +999,7 @@ function disconnect() {
   muteButton.disabled = true;
   setStatus("Idle");
   setLiveBanner("Session disconnected.");
+  disconnectCompanion();
   scheduleBrowserStateSync();
 }
 
@@ -909,6 +1013,127 @@ function toggleMute() {
   muteButton.textContent = isMuted ? "Unmute mic" : "Mute mic";
   setLiveBanner(isMuted ? "Microphone muted." : "Microphone live.");
 }
+
+// ── Companion WebSocket ────────────────────────────────────────────
+
+function connectCompanion() {
+  if (companionWs && companionWs.readyState <= WebSocket.OPEN) {
+    return;
+  }
+
+  // Connect through the Node server's /companion proxy (same origin, same port)
+  // so we don't need a second port forwarded through WSL2
+  const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  companionWs = new WebSocket(`${wsProto}//${window.location.host}/companion`);
+
+  companionWs.onopen = () => {
+    companionWs.send(JSON.stringify({
+      type: "init",
+      sessionId: getSupervisorSessionId(),
+      profileSessionId: getProfileSessionId(),
+    }));
+    addEvent("companion", "WebSocket connected to companion server.");
+  };
+
+  companionWs.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleCompanionMessage(msg);
+    } catch (err) {
+      addEvent("companion_error", "Failed to parse companion message.");
+    }
+  };
+
+  companionWs.onclose = () => {
+    companionReady = false;
+    addEvent("companion", "WebSocket disconnected. Reconnecting in 3s...");
+    setTimeout(connectCompanion, 3000);
+  };
+
+  companionWs.onerror = () => {
+    // onclose will fire after this; no need to double-log
+  };
+}
+
+function handleCompanionMessage(msg) {
+  switch (msg.type) {
+    case "ready":
+      companionTools = msg.tools || [];
+      companionInstructions = msg.instructions || "";
+      companionReady = true;
+      addEvent("companion", `Ready with ${companionTools.length} tools.`);
+      // Re-send session.update so the Realtime model picks up tools + instructions
+      applyLiveSessionUpdate("Companion tools registered in Realtime session.");
+      break;
+    case "memory":
+      renderSessionMemory(msg.memory || {});
+      break;
+    case "approvals":
+      renderApprovals(msg.pending || []);
+      break;
+    case "terminal":
+      if (msg.state) {
+        setTerminalSnapshot(msg.state.output || "");
+      }
+      break;
+    case "tool_result":
+      handleToolResult(msg);
+      break;
+    case "error":
+      addEvent("companion_error", msg.message || "Unknown companion error");
+      break;
+    case "pong":
+      break;
+  }
+}
+
+function handleToolResult(msg) {
+  if (!dataChannel || dataChannel.readyState !== "open") {
+    addEvent("companion_error", "Data channel not open; cannot relay tool result.");
+    return;
+  }
+
+  // Send the function call output back to OpenAI Realtime API
+  dataChannel.send(JSON.stringify({
+    type: "conversation.item.create",
+    item: {
+      type: "function_call_output",
+      call_id: msg.callId,
+      output: msg.result || "",
+    }
+  }));
+
+  // Trigger a new model response that incorporates the tool result
+  dataChannel.send(JSON.stringify({
+    type: "response.create"
+  }));
+
+  addEvent("tool_result", `${msg.name}: ${msg.ok ? "done" : "error"}`);
+}
+
+function syncCompanionBrowserState() {
+  if (!companionWs || companionWs.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  companionWs.send(JSON.stringify({
+    type: "browser_state",
+    state: buildBrowserState(),
+  }));
+}
+
+function disconnectCompanion() {
+  if (companionWs) {
+    // Prevent auto-reconnect by removing onclose before closing
+    companionWs.onclose = null;
+    companionWs.close();
+    companionWs = null;
+  }
+  companionTools = [];
+  companionInstructions = "";
+  companionReady = false;
+}
+
+// ── End Companion WebSocket ────────────────────────────────────────
 
 function markPromptDirty() {
   persistActiveProfileState();
@@ -1453,10 +1678,17 @@ presetSelect.addEventListener("change", () => {
     announce: true,
     forceSync: true
   });
+  applyLiveSessionUpdate("Switched the live Realtime session to the selected character preset.");
   setPromptSaveStatus("Loaded this character");
 });
-voiceSelect.addEventListener("change", scheduleBrowserStateSync);
-turnSelect.addEventListener("change", scheduleBrowserStateSync);
+voiceSelect.addEventListener("change", () => {
+  scheduleBrowserStateSync();
+  applyLiveSessionUpdate("Updated the live Realtime voice preference.");
+});
+turnSelect.addEventListener("change", () => {
+  scheduleBrowserStateSync();
+  applyLiveSessionUpdate("Updated live turn detection for the current preset.");
+});
 styleSelect.addEventListener("change", () => {
   persistActiveProfileState();
   renderSessionMemory({
@@ -1470,6 +1702,7 @@ styleSelect.addEventListener("change", () => {
       "Claude work stays on the shared project lane. This character lane now has updated style and local memory."
   });
   scheduleBrowserStateSync();
+  applyLiveSessionUpdate("Updated the live Realtime style and remembered preset context.");
 });
 customInstructionsInput.addEventListener("input", markPromptDirty);
 supervisorPromptInput.addEventListener("input", () => {
@@ -1558,6 +1791,9 @@ async function initializeApp() {
 
   await refreshSupervisorHealth();
   scheduleBrowserStateSync(120);
+
+  // Connect to companion WebSocket server (additive — does not break legacy HTTP path)
+  connectCompanion();
 }
 
 void initializeApp();

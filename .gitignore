@@ -36,3 +36,4 @@ tmp/
 Thumbs.db
 .idea/
 .vscode/
+apps/realtime_voice/prompts/presets/study_buddy.txt

@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
   "openai-agents",
   "pydantic>=2.0,<3.0",
+  "websockets>=13.0",
 ]
 
 [build-system]

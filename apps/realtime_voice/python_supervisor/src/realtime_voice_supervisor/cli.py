@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -17,6 +18,24 @@ def _read_payload(raw_payload: str | None) -> dict:
     if not raw:
         return {}
     return json.loads(raw)
+
+
+async def _serve(args: argparse.Namespace) -> int:
+    """Run the persistent companion WebSocket server."""
+    from .companion_server import serve
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
+    app_root = Path(args.app_root).resolve()
+    repo_root = Path(args.repo_root).resolve()
+    host = args.host or "127.0.0.1"
+    port = int(args.port or 4174)
+
+    await serve(repo_root=repo_root, app_root=app_root, host=host, port=port)
+    return 0
 
 
 async def _run() -> int:
@@ -37,6 +56,7 @@ async def _run() -> int:
             "second-opinion",
             "draft-claude-prompt",
             "explain-approval",
+            "serve",
         ],
     )
     parser.add_argument(
@@ -54,7 +74,20 @@ async def _run() -> int:
         default=None,
         help="JSON payload passed from the Node bridge.",
     )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for the companion WebSocket server (serve command only).",
+    )
+    parser.add_argument(
+        "--port",
+        default="4174",
+        help="Port for the companion WebSocket server (serve command only).",
+    )
     args = parser.parse_args()
+
+    if args.command == "serve":
+        return await _serve(args)
 
     app_root = Path(args.app_root).resolve()
     repo_root = Path(args.repo_root).resolve()

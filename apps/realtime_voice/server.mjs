@@ -1,6 +1,8 @@
 import "dotenv/config";
 
 import { execFile } from "node:child_process";
+import { createServer as createHttpServer } from "node:http";
+import { connect as netConnect } from "node:net";
 import express from "express";
 import fs from "node:fs";
 import path from "node:path";
@@ -825,9 +827,47 @@ app.use((_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
-app.listen(port, host, () => {
+const companionHost = process.env.COMPANION_HOST || "127.0.0.1";
+const companionPort = Number(process.env.COMPANION_PORT || 4174);
+
+const server = createHttpServer(app);
+
+// Proxy WebSocket upgrades on /companion to the Python companion server.
+// This lets the browser reach the companion through the same origin/port,
+// avoiding WSL2 port-forwarding issues for a second port.
+server.on("upgrade", (req, socket, head) => {
+  if (req.url !== "/companion") {
+    socket.destroy();
+    return;
+  }
+
+  const upstream = netConnect({ host: companionHost, port: companionPort }, () => {
+    // Replay the original HTTP upgrade request to the companion server
+    const reqLine = `${req.method} / HTTP/${req.httpVersion}\r\n`;
+    const headers = Object.entries(req.headers)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\r\n");
+    upstream.write(reqLine + headers + "\r\n\r\n");
+    if (head.length) {
+      upstream.write(head);
+    }
+    // Bidirectional pipe
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+
+  upstream.on("error", (err) => {
+    console.error(`Companion proxy error: ${err.message}`);
+    socket.destroy();
+  });
+
+  socket.on("error", () => upstream.destroy());
+});
+
+server.listen(port, host, () => {
   const localhostUrl = `http://127.0.0.1:${port}`;
   const bindLabel = host === "0.0.0.0" ? "all interfaces" : host;
   console.log(`Realtime voice server ready on ${bindLabel}:${port}`);
   console.log(`Try ${localhostUrl} from the same machine or your WSL IP if localhost forwarding is unavailable.`);
+  console.log(`Companion WebSocket proxy: ws://${bindLabel}:${port}/companion → ws://${companionHost}:${companionPort}`);
 });
