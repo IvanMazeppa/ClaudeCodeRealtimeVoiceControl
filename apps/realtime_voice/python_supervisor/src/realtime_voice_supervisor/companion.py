@@ -59,15 +59,38 @@ def build_companion(
 
     @function_tool
     async def check_claude_status(ctx: RunContextWrapper[dict[str, Any]]) -> str:
-        """Check whether the Claude Code terminal session exists and is idle."""
+        """Check whether the Claude Code terminal session exists and what mode it is in.
+
+        Returns ready=true when the ❯ prompt is visible (use send_to_claude).
+        Returns interactive_menu=true when a menu or dialog is showing
+        (use send_keys_to_terminal with raw=true instead of send_to_claude).
+        """
         state = await harness.get_terminal_state()
-        return json.dumps({"session_exists": state["session_exists"], "ready": state["ready"]})
+        return json.dumps({
+            "session_exists": state["session_exists"],
+            "ready": state["ready"],
+            "interactive_menu": state.get("interactive_menu", False),
+        })
 
     @function_tool
     async def see_claude_terminal(ctx: RunContextWrapper[dict[str, Any]]) -> str:
-        """Read the visible output from the Claude Code terminal."""
+        """Read the visible output from the Claude Code terminal.
+
+        The result includes a mode hint at the top:
+        - [PROMPT MODE] means ❯ is visible — use send_to_claude.
+        - [INTERACTIVE MENU] means a menu/dialog is showing — use
+          send_keys_to_terminal with raw=true.
+        - [BUSY] means Claude is working — wait or use interrupt_claude.
+        """
         state = await harness.get_terminal_state()
-        return state.get("output", "(no output)")
+        output = state.get("output", "(no output)")
+        if state.get("interactive_menu"):
+            mode = "[INTERACTIVE MENU — use send_keys_to_terminal with raw=true, NOT send_to_claude]"
+        elif state.get("ready"):
+            mode = "[PROMPT MODE — ready for send_to_claude]"
+        else:
+            mode = "[BUSY — Claude is working]"
+        return f"{mode}\n\n{output}"
 
     @function_tool
     async def start_claude_session(ctx: RunContextWrapper[dict[str, Any]]) -> str:
@@ -120,6 +143,62 @@ def build_companion(
         """Send Ctrl+C to interrupt Claude Code's current work."""
         output = await harness.interrupt()
         return output or "(interrupt sent)"
+
+    @function_tool
+    async def send_keys_to_terminal(
+        ctx: RunContextWrapper[dict[str, Any]],
+        keys: list[str],
+        raw: bool = False,
+    ) -> str:
+        """Send special key presses to the Claude Code terminal.
+
+        Use this when the terminal is in a menu, confirmation dialog,
+        or any state where a plain text prompt would not work.
+
+        Supported key names: escape, enter, tab, backspace, delete,
+        up, down, left, right, home, end, pageup, pagedown, space,
+        ctrl-c, ctrl-d, ctrl-a, ctrl-e, ctrl-l, ctrl-z, ctrl-r.
+        You can also send literal characters like 'y' or 'n'.
+
+        Set raw=true to send keys as raw PTY bytes instead of named
+        keys. Use raw mode when an interactive TUI menu ignores normal
+        key presses — it bypasses key-name interpretation and sends
+        exact byte values to the terminal.
+
+        Examples:
+        - Navigate a menu: ["down", "down", "enter"]
+        - Select in a TUI that ignores named keys: ["down", "enter"] with raw=true
+        - Dismiss a dialog: ["escape"]
+        - Answer yes: ["y"]
+        - Interrupt: ["ctrl-c"] with raw=true
+        """
+        output = await harness.send_keys(keys, settle_ms=300, raw=raw)
+        return output or "(keys sent)"
+
+    @function_tool
+    async def wait_for_terminal_content(
+        ctx: RunContextWrapper[dict[str, Any]],
+        pattern: str,
+        timeout_seconds: int = 10,
+    ) -> str:
+        """Wait until the terminal output contains text matching a regex pattern.
+
+        Use this after sending a command that triggers an interactive menu
+        or long-running operation. It polls the terminal until the pattern
+        appears, then returns the terminal output.
+
+        Examples:
+        - Wait for a menu: pattern="Select.*session" or pattern="resume"
+        - Wait for Claude to finish: pattern="❯"
+        - Wait for a prompt: pattern="\\(y/n\\)"
+        """
+        output = await harness.wait_for_content(
+            pattern,
+            timeout_ms=timeout_seconds * 1000,
+        )
+        if output is None:
+            return f"Timed out after {timeout_seconds}s waiting for pattern: {pattern}"
+        return output
 
     # ── Git tools ────────────────────────────────────────────────────
 
@@ -267,6 +346,8 @@ def build_companion(
         approve_pending_prompt,
         reject_pending_prompt,
         interrupt_claude,
+        send_keys_to_terminal,
+        wait_for_terminal_content,
         # Git
         git_branch,
         git_status,

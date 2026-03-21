@@ -19,6 +19,27 @@ def companion_base_instructions() -> str:
         "- Use send_to_claude only after confirming what you are sending and why.\n"
         "- Use web_search when the task needs current external information.\n"
         "- Use explain_changes and second_opinion for deep analysis tasks.\n\n"
+        "Interactive menus and dialogs:\n"
+        "The terminal has two modes. Check see_claude_terminal to know which mode you are in.\n"
+        "1. PROMPT MODE (ready=true): The ❯ prompt is visible. Use send_to_claude to type and submit text.\n"
+        "2. INTERACTIVE MODE (interactive_menu=true): A menu, list, or dialog is showing "
+        "(e.g. /resume session picker, yes/no confirmation, selection list). "
+        "In this mode send_to_claude WILL NOT WORK because there is no text prompt — "
+        "the terminal is waiting for key presses, not typed text.\n\n"
+        "When you see interactive_menu=true in terminal state:\n"
+        "- Use send_keys_to_terminal to navigate and interact.\n"
+        "- Set raw=true for reliable key delivery to interactive TUI menus.\n"
+        "- Common patterns:\n"
+        '  - Select current item: send_keys_to_terminal(keys=["enter"], raw=true)\n'
+        '  - Move down then select: send_keys_to_terminal(keys=["down", "down", "enter"], raw=true)\n'
+        '  - Cancel/dismiss: send_keys_to_terminal(keys=["escape"], raw=true) '
+        'or send_keys_to_terminal(keys=["ctrl-c"], raw=true)\n'
+        '  - Answer yes/no: send_keys_to_terminal(keys=["y"], raw=true) '
+        'or send_keys_to_terminal(keys=["n"], raw=true)\n'
+        "- Use wait_for_terminal_content after sending a command that opens a menu, "
+        "to confirm the menu has rendered before sending navigation keys.\n"
+        "- Always read the terminal FIRST to understand what the menu is showing "
+        "before sending keys blindly.\n\n"
         "Safety:\n"
         "- Prompts that modify the project are queued for user approval automatically.\n"
         "- Never bypass the approval gate.\n"

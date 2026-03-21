@@ -94,6 +94,27 @@ Out of scope:
 - general-purpose browsing everywhere by default
 - replacing local repo inspection with web tools
 
+### Phase 2.5: Interactive Terminal In The Browser
+
+Goal:
+Give the user direct keyboard access to the Claude Code terminal session from the
+browser so menus, confirmations, and interactive prompts are usable without the
+voice agent narrating every keystroke.
+
+Deliverables:
+
+- xterm.js terminal widget embedded in the browser UI
+- WebSocket bridge (Node server) that attaches to the existing tmux session
+- bidirectional I/O: user types in the browser, output streams back live
+- voice agent and browser terminal share the same tmux session — the agent can
+  still read and send keys alongside the user
+- the existing terminal snapshot panel remains as a read-only summary view
+
+Out of scope:
+
+- replacing tmux with node-pty for the primary session
+- giving the voice agent pixel-level screen understanding through the browser terminal
+
 ### Phase 3: Workspace Interaction
 
 Goal:

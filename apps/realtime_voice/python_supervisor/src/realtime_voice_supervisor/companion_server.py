@@ -133,9 +133,12 @@ class CompanionServer:
             tool_call_id=call_id,
             tool_arguments=arguments,
         )
+        logger.info("Executing tool %s (call_id=%s) args=%s", tool_name, call_id, arguments[:200])
         try:
             result = await tool.on_invoke_tool(tool_context, arguments)
-            return {"ok": True, "result": str(result)}
+            result_str = str(result)
+            logger.info("Tool %s result (first 200 chars): %s", tool_name, result_str[:200])
+            return {"ok": True, "result": result_str}
         except Exception as exc:
             logger.exception("Tool %s failed", tool_name)
             return {"ok": False, "error": str(exc)}
@@ -219,6 +222,7 @@ class CompanionServer:
                     if tool_name in {
                         "send_to_claude", "start_claude_session", "interrupt_claude",
                         "approve_pending_prompt", "reject_pending_prompt",
+                        "send_keys_to_terminal", "wait_for_terminal_content",
                     }:
                         terminal = await self.harness.get_terminal_state()
                         await self._send(websocket, {
