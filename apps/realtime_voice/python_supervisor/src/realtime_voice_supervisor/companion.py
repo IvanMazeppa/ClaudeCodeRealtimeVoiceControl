@@ -13,16 +13,23 @@ import os
 from pathlib import Path
 from typing import Any
 
-from agents import Agent, Runner, WebSearchTool, function_tool
+from agents import Agent, ModelSettings, Runner, WebSearchTool, function_tool
 from agents.realtime import RealtimeAgent
 from agents.run_context import RunContextWrapper
+from openai.types.shared import Reasoning
 
 from .git_tools import GitToolbox
 from .harness import ClaudeTerminalHarness
 from .memory import MemoryStore
-from .models import ChangeExplanation, ClaudePromptDraft, SecondOpinion
+from .models import (
+    ChangeExplanation,
+    ClaudePromptDraft,
+    CollaborativeRoadmap,
+    SecondOpinion,
+)
 from .prompts import (
     change_explainer_instructions,
+    collaborative_roadmap_instructions,
     companion_base_instructions,
     prompt_drafter_instructions,
     second_opinion_instructions,
@@ -35,6 +42,27 @@ RISKY_PROMPT_MARKERS = (
     "delete ", "remove ", "rename ", "commit", "checkout", "reset",
     "rebase", "npm install", "pip install", "cargo add", "apt ",
     "git ", "start server", "launch",
+)
+
+# ── Per-agent reasoning effort settings ──────────────────────────────
+# GPT-5.4 defaults to effort=none. We override per agent role:
+# - Voice-facing agents stay fast (none/low)
+# - Analytical agents that produce documents think harder (medium/high)
+SETTINGS_PROMPT_DRAFTER = ModelSettings(
+    reasoning=Reasoning(effort="low"),
+    verbosity="low",
+)
+SETTINGS_CHANGE_EXPLAINER = ModelSettings(
+    reasoning=Reasoning(effort="low"),
+    verbosity="low",
+)
+SETTINGS_SECOND_OPINION = ModelSettings(
+    reasoning=Reasoning(effort="medium"),
+    verbosity="low",
+)
+SETTINGS_ROADMAP_AUDITOR = ModelSettings(
+    reasoning=Reasoning(effort="high"),
+    verbosity="medium",
 )
 
 
@@ -259,6 +287,7 @@ def build_companion(
         drafter = Agent(
             name="PromptDrafter",
             model=deep_model,
+            model_settings=SETTINGS_PROMPT_DRAFTER,
             instructions=prompt_drafter_instructions(),
             tools=_build_readonly_tools(git, repo, harness),
             output_type=ClaudePromptDraft,
@@ -276,6 +305,7 @@ def build_companion(
         explainer = Agent(
             name="ChangeExplainer",
             model=deep_model,
+            model_settings=SETTINGS_CHANGE_EXPLAINER,
             instructions=change_explainer_instructions(),
             tools=_build_readonly_tools(git, repo, harness),
             output_type=ChangeExplanation,
@@ -298,6 +328,7 @@ def build_companion(
         reviewer = Agent(
             name="SecondOpinion",
             model=deep_model,
+            model_settings=SETTINGS_SECOND_OPINION,
             instructions=second_opinion_instructions(),
             tools=_build_readonly_tools(git, repo, harness),
             output_type=SecondOpinion,
@@ -316,6 +347,101 @@ def build_companion(
         if hasattr(output, "drafted_follow_up_prompt") and output.drafted_follow_up_prompt:
             parts.append(f"Suggested prompt: {output.drafted_follow_up_prompt}")
         return "\n".join(parts) or str(output)
+
+    # ── Collaborative roadmap tool ────────────────────────────────────
+
+    @function_tool
+    async def collaborative_roadmap(
+        ctx: RunContextWrapper[dict[str, Any]],
+        focus: str = "",
+        max_turns: int = 30,
+    ) -> str:
+        """Launch a structured self-audit where GPT-5.4 reads its own source code,
+        then conducts an analytical conversation with Claude Code (Opus 4.6) to
+        produce an upgrade roadmap.
+
+        The audit runs as a bounded multi-turn agent with a finite turn budget.
+        Results are saved to docs/collaborative-roadmap.md and returned as a
+        structured summary.
+
+        Args:
+            focus: Optional focus area (e.g. "voice UX", "tool reliability",
+                   "architecture"). If empty, the agent audits broadly.
+            max_turns: Maximum number of tool-call turns (default 30).
+                       Each Claude Code exchange uses ~4 turns.
+        """
+        roadmap_tools = _build_roadmap_tools(git, repo, harness)
+        focus_note = f"\n\nFOCUS AREA: {focus}" if focus else ""
+
+        auditor = Agent(
+            name="RoadmapAuditor",
+            model=deep_model,
+            model_settings=SETTINGS_ROADMAP_AUDITOR,
+            instructions=collaborative_roadmap_instructions() + focus_note,
+            tools=roadmap_tools,
+            output_type=CollaborativeRoadmap,
+        )
+
+        result = await Runner.run(
+            auditor,
+            (
+                "Conduct a self-audit of the voice companion system. "
+                "Start by reading the key source files under "
+                "apps/realtime_voice/python_supervisor/src/realtime_voice_supervisor/, "
+                "then engage Claude Code in a structured analytical discussion. "
+                "Compile your findings into a CollaborativeRoadmap."
+                + (f"\nFocus on: {focus}" if focus else "")
+            ),
+            context=ctx.context,
+            max_turns=max_turns,
+        )
+
+        output = result.final_output
+
+        # Save full roadmap to docs/
+        if hasattr(output, "items") and output.items:
+            import textwrap
+            lines = [
+                "# Collaborative Upgrade Roadmap",
+                "",
+                f"*Generated by GPT-5.4 + Claude Opus 4.6 self-audit*",
+                "",
+                "## Executive Summary",
+                "",
+                output.executive_summary,
+                "",
+                "## Roadmap Items",
+                "",
+            ]
+            for i, item in enumerate(output.items, 1):
+                lines.extend([
+                    f"### {i}. {item.title}",
+                    f"**Priority:** {item.priority} | "
+                    f"**Complexity:** {item.estimated_complexity}",
+                    "",
+                    item.description,
+                    "",
+                    f"*Rationale: {item.rationale}*",
+                    "",
+                ])
+            if output.conversation_highlights:
+                lines.extend(["## Discussion Highlights", ""])
+                for h in output.conversation_highlights:
+                    lines.append(f"- {h}")
+                lines.append("")
+            if output.open_questions:
+                lines.extend(["## Open Questions", ""])
+                for q in output.open_questions:
+                    lines.append(f"- {q}")
+                lines.append("")
+
+            roadmap_path = repo_root / "docs" / "collaborative-roadmap.md"
+            roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+            roadmap_path.write_text("\n".join(lines), encoding="utf-8")
+
+        spoken = getattr(output, "spoken_summary", "")
+        exec_summary = getattr(output, "executive_summary", "")
+        return f"{spoken}\n\nFull roadmap saved to docs/collaborative-roadmap.md\n\n{exec_summary}"
 
     # ── Dynamic instructions ─────────────────────────────────────────
 
@@ -363,6 +489,8 @@ def build_companion(
         draft_claude_prompt,
         explain_changes,
         second_opinion,
+        # Collaborative
+        collaborative_roadmap,
         # Hosted
         WebSearchTool(),
     ]
@@ -421,4 +549,124 @@ def _build_readonly_tools(git: GitToolbox, repo: RepoToolbox, harness: ClaudeTer
         git_recent_commits,
         repo_search,
         read_file_excerpt,
+    ]
+
+
+def _build_roadmap_tools(
+    git: GitToolbox,
+    repo: RepoToolbox,
+    harness: ClaudeTerminalHarness,
+):
+    """Tool set for the collaborative roadmap agent (GPT-5.4).
+
+    Includes readonly repo/git tools plus terminal interaction tools
+    for conducting an analytical conversation with Claude Code (Opus 4.6).
+    """
+
+    # ── Readonly repo/git tools ──────────────────────────────────────
+
+    @function_tool
+    async def git_status_summary(ctx: RunContextWrapper[dict[str, Any]]) -> str:
+        """Concise git status."""
+        return await git.git_status_summary()
+
+    @function_tool
+    async def git_current_branch(ctx: RunContextWrapper[dict[str, Any]]) -> str:
+        """Current git branch."""
+        return await git.git_current_branch()
+
+    @function_tool
+    async def git_recent_commits(ctx: RunContextWrapper[dict[str, Any]], limit: int = 5) -> str:
+        """Recent commits."""
+        return await git.git_recent_commits(limit=limit)
+
+    @function_tool
+    async def repo_search(ctx: RunContextWrapper[dict[str, Any]], pattern: str) -> str:
+        """Search for files matching a pattern."""
+        return await repo.repo_search(pattern)
+
+    @function_tool
+    async def read_file_excerpt(
+        ctx: RunContextWrapper[dict[str, Any]],
+        path: str,
+        start_line: int = 1,
+    ) -> str:
+        """Read a bounded file excerpt from the repository."""
+        return await repo.read_file(path, start_line=start_line)
+
+    @function_tool
+    async def list_directory(
+        ctx: RunContextWrapper[dict[str, Any]],
+        path: str = ".",
+    ) -> str:
+        """List files and folders in a repository directory."""
+        return await repo.list_directory(path=path)
+
+    # ── Claude Code interaction tools ────────────────────────────────
+
+    @function_tool
+    async def ask_claude_code(
+        ctx: RunContextWrapper[dict[str, Any]],
+        question: str,
+    ) -> str:
+        """Send an analytical question to Claude Code (Opus 4.6) via the terminal.
+
+        Use this to ask Claude for architectural analysis, pattern identification,
+        or improvement suggestions. Do NOT send prompts that modify files.
+
+        The question is sent as-is to the Claude Code terminal. After calling this,
+        use wait_for_claude_ready to wait for the response, then read_claude_terminal
+        to read it.
+        """
+        # Safety: reject prompts that look like edit commands
+        normalized = question.lower().strip()
+        for marker in RISKY_PROMPT_MARKERS:
+            if normalized.startswith(marker):
+                return (
+                    f"Blocked: question starts with '{marker}' which looks like "
+                    f"an edit command. Rephrase as an analytical question."
+                )
+        output = await harness.send_prompt(question, settle_ms=500)
+        return output or "(question sent — use wait_for_claude_ready then read_claude_terminal)"
+
+    @function_tool
+    async def wait_for_claude_ready(
+        ctx: RunContextWrapper[dict[str, Any]],
+        timeout_seconds: int = 120,
+    ) -> str:
+        """Wait for Claude Code to finish responding (❯ prompt visible).
+
+        Call this after ask_claude_code before reading the response.
+        Uses a longer default timeout because Claude may take time to think.
+        """
+        output = await harness.wait_for_content(
+            r"❯",
+            timeout_ms=timeout_seconds * 1000,
+            poll_ms=2000,
+        )
+        if output is None:
+            return f"Timed out after {timeout_seconds}s waiting for Claude to finish."
+        return "Claude is ready. Use read_claude_terminal to read the response."
+
+    @function_tool
+    async def read_claude_terminal(ctx: RunContextWrapper[dict[str, Any]]) -> str:
+        """Read the current Claude Code terminal output.
+
+        Use this after wait_for_claude_ready to read Claude's response.
+        """
+        state = await harness.get_terminal_state()
+        return state.get("output", "(no output)")
+
+    return [
+        # Repo/git
+        git_status_summary,
+        git_current_branch,
+        git_recent_commits,
+        repo_search,
+        read_file_excerpt,
+        list_directory,
+        # Claude Code interaction
+        ask_claude_code,
+        wait_for_claude_ready,
+        read_claude_terminal,
     ]

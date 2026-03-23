@@ -72,7 +72,9 @@ class CompanionServer:
         """Export tool definitions in OpenAI Realtime session.update format.
 
         The browser includes these in its session.update so the Realtime
-        model knows which tools it can call.
+        model knows which tools it can call. Only function tools are included —
+        hosted tools like WebSearchTool are not supported by the Realtime API
+        (it only accepts 'function' and 'mcp' types).
         """
         definitions = []
         for tool in self.companion.tools:
@@ -283,6 +285,7 @@ class CompanionServer:
             "output": output_override or terminal.get("output", ""),
             "ready": terminal.get("ready", False),
             "session_exists": terminal.get("session_exists", False),
+            "interactive_menu": terminal.get("interactive_menu", False),
         }
 
     async def _send(self, websocket: Any, payload: dict[str, Any]) -> None:

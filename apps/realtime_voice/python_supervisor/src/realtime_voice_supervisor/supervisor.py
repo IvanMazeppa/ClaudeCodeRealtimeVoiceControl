@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from agents import Agent, Runner, RunState, SQLiteSession, function_tool, trace
+from agents import Agent, ModelSettings, Runner, RunState, SQLiteSession, function_tool, trace
 from agents.run_context import RunContextWrapper
+from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
 from .harness import ClaudeTerminalHarness
@@ -44,6 +45,12 @@ RISKY_PROMPT_MARKERS = (
     "launch",
 )
 
+# ── Reasoning effort for legacy supervisor agents ────────────────────
+SETTINGS_SUPERVISOR_LOW = ModelSettings(
+    reasoning=Reasoning(effort="low"),
+    verbosity="low",
+)
+
 
 def _tool_call_id(item: Any) -> str:
     raw = getattr(item, "raw_item", None)
@@ -68,6 +75,7 @@ def _default_context(session_id: str) -> dict[str, Any]:
         "action_log": [],
         "terminal_snapshot": "",
         "terminal_ready": False,
+        "terminal_interactive_menu": False,
         "claude_session_exists": False,
         "latest_git_branch": "",
         "latest_git_status": "",
@@ -352,6 +360,7 @@ class SupervisorService:
         terminal = await self.harness.get_terminal_state(self.harness.load_config())
         result["terminalSnapshot"] = terminal.get("output", "")
         result["terminalReady"] = bool(terminal.get("ready"))
+        result["terminalInteractiveMenu"] = bool(terminal.get("interactive_menu"))
         result["claudeSessionExists"] = bool(terminal.get("session_exists"))
         result["pendingApprovals"] = await self._load_pending_approvals(session_id)
         return result
@@ -587,6 +596,7 @@ class SupervisorService:
             "spokenResponse": spoken_response,
             "terminalSnapshot": context.get("terminal_snapshot", ""),
             "terminalReady": bool(context.get("terminal_ready")),
+            "terminalInteractiveMenu": bool(context.get("terminal_interactive_menu")),
             "claudeSessionExists": bool(context.get("claude_session_exists")),
             "actionLog": list(context.get("action_log", [])),
             "pendingApprovals": pending_approvals,
@@ -611,6 +621,7 @@ class SupervisorService:
             "spokenResponse": spoken_response,
             "terminalSnapshot": terminal.get("output", ""),
             "terminalReady": bool(terminal.get("ready")),
+            "terminalInteractiveMenu": bool(terminal.get("interactive_menu")),
             "claudeSessionExists": bool(terminal.get("session_exists")),
             "actionLog": action_log,
             "pendingApprovals": pending_approvals,
@@ -1085,6 +1096,7 @@ class SupervisorService:
         def _store_terminal_state(ctx: RunContextWrapper[dict[str, Any]], state: dict[str, Any]) -> None:
             ctx.context["terminal_snapshot"] = state.get("output", "")
             ctx.context["terminal_ready"] = bool(state.get("ready"))
+            ctx.context["terminal_interactive_menu"] = bool(state.get("interactive_menu"))
             ctx.context["claude_session_exists"] = bool(state.get("session_exists"))
 
         async def _needs_prompt_approval(
@@ -1152,6 +1164,7 @@ class SupervisorService:
         claude_terminal_agent = Agent(
             name="ClaudeTerminalAgent",
             model=self.supervisor_model,
+            model_settings=SETTINGS_SUPERVISOR_LOW,
             instructions=(
                 "You specialize in interacting with Claude Code running in a real tmux-backed terminal. "
                 "Use attach_or_verify_session before trying to send prompts if you are not sure the session exists. "
@@ -1166,6 +1179,7 @@ class SupervisorService:
         supervisor_agent = Agent(
             name="VoiceSupervisorAgent",
             model=self.supervisor_model,
+            model_settings=SETTINGS_SUPERVISOR_LOW,
             instructions=(
                 "You are the backend supervisor for a voice-driven Claude Code workflow. "
                 "Help the user interact with Claude Code in a hands-free, low-friction way. "

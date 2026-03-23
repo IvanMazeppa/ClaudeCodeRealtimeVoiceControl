@@ -1074,6 +1074,16 @@ function handleCompanionMessage(msg) {
     case "terminal":
       if (msg.state) {
         setTerminalSnapshot(msg.state.output || "");
+        // Update status indicator with interactive menu awareness
+        if (msg.state.session_exists) {
+          if (msg.state.interactive_menu) {
+            setSupervisorStatus("Interactive menu", "busy");
+          } else if (msg.state.ready) {
+            setSupervisorStatus("Claude ready", "live");
+          } else {
+            setSupervisorStatus("Claude busy", "busy");
+          }
+        }
       }
       break;
     case "tool_result":
@@ -1242,6 +1252,8 @@ function syncSupervisorMonitorState(data) {
     setSupervisorMonitorState("Watching approvals");
   } else if (!data.claudeSessionExists) {
     setSupervisorMonitorState("Waiting for Claude");
+  } else if (data.terminalInteractiveMenu) {
+    setSupervisorMonitorState("Interactive menu active");
   } else if (data.terminalReady) {
     setSupervisorMonitorState("Live view active");
   } else {
@@ -1363,7 +1375,11 @@ function applySupervisorResponse(
   if (data.pendingApprovals?.length) {
     setSupervisorStatus("Awaiting approval", "busy");
   } else if (data.claudeSessionExists) {
-    setSupervisorStatus(data.terminalReady ? "Claude ready" : "Claude busy", data.terminalReady ? "live" : "busy");
+    if (data.terminalInteractiveMenu) {
+      setSupervisorStatus("Interactive menu", "busy");
+    } else {
+      setSupervisorStatus(data.terminalReady ? "Claude ready" : "Claude busy", data.terminalReady ? "live" : "busy");
+    }
   } else {
     setSupervisorStatus("Claude not attached", "idle");
   }
@@ -1410,13 +1426,18 @@ async function refreshSupervisorHealth() {
     updateSupervisorMonitorButton();
     setSupervisorMonitorUpdated("Not yet");
     if (data.terminal?.session_exists) {
-      setSupervisorStatus(data.terminal.ready ? "Claude ready" : "Claude busy", data.terminal.ready ? "live" : "busy");
+      if (data.terminal.interactive_menu) {
+        setSupervisorStatus("Interactive menu", "busy");
+      } else {
+        setSupervisorStatus(data.terminal.ready ? "Claude ready" : "Claude busy", data.terminal.ready ? "live" : "busy");
+      }
     } else {
       setSupervisorStatus("Claude not attached", "idle");
     }
     syncSupervisorMonitorState({
       claudeSessionExists: Boolean(data.terminal?.session_exists),
       terminalReady: Boolean(data.terminal?.ready),
+      terminalInteractiveMenu: Boolean(data.terminal?.interactive_menu),
       pendingApprovals: Array.isArray(data.pendingApprovals) ? data.pendingApprovals : []
     });
     scheduleBrowserStateSync(180);

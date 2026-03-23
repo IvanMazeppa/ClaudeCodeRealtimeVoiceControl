@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agents import Agent, function_tool
+from agents import Agent, ModelSettings, function_tool
 from agents.run_context import RunContextWrapper
+from openai.types.shared import Reasoning
 
 from .git_tools import GitToolbox
 from .harness import ClaudeTerminalHarness
@@ -17,6 +18,16 @@ from .prompts import (
     second_opinion_instructions,
 )
 from .repo_tools import RepoToolbox
+
+# ── Per-agent reasoning effort settings ──────────────────────────────
+SETTINGS_LOW = ModelSettings(
+    reasoning=Reasoning(effort="low"),
+    verbosity="low",
+)
+SETTINGS_MEDIUM = ModelSettings(
+    reasoning=Reasoning(effort="medium"),
+    verbosity="low",
+)
 
 
 def _remember(ctx: RunContextWrapper[dict[str, Any]], key: str, value: Any) -> None:
@@ -37,6 +48,7 @@ def build_mentor_agent(
     return Agent(
         name="MentorAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_LOW,
         instructions=(
             f"{mentor_base_instructions()} "
             "Handle general mentor requests such as explaining the current repo state, summarizing "
@@ -55,6 +67,7 @@ def build_change_explainer_agent(
     return Agent(
         name="ChangeExplainerAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_LOW,
         instructions=change_explainer_instructions(),
         tools=_build_shared_tools(repo_root, harness),
         output_type=ChangeExplanation,
@@ -69,6 +82,7 @@ def build_second_opinion_agent(
     return Agent(
         name="SecondOpinionAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_MEDIUM,
         instructions=second_opinion_instructions(),
         tools=_build_shared_tools(repo_root, harness),
         output_type=SecondOpinion,
@@ -83,6 +97,7 @@ def build_prompt_drafter_agent(
     return Agent(
         name="ClaudePromptDrafterAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_LOW,
         instructions=prompt_drafter_instructions(),
         tools=_build_shared_tools(repo_root, harness),
         output_type=ClaudePromptDraft,
@@ -97,6 +112,7 @@ def build_approval_explainer_agent(
     return Agent(
         name="ApprovalExplainerAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_LOW,
         instructions=approval_explainer_instructions(),
         tools=_build_shared_tools(repo_root, harness),
         output_type=ApprovalExplanation,
@@ -111,6 +127,7 @@ def build_claude_state_agent(
     return Agent(
         name="ClaudeStateMentorAgent",
         model=supervisor_model,
+        model_settings=SETTINGS_LOW,
         instructions=(
             f"{mentor_base_instructions()} "
             "Summarize what Claude Code is doing right now. "
